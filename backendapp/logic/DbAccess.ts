@@ -1,0 +1,51 @@
+import { Client } from 'pg';
+import envVariables from '../config'
+export class DbAccess {
+    private client!: Client;
+
+    public async connectWithConf() {
+
+        return this.connect(
+            envVariables.host,
+            envVariables.user,
+            envVariables.password,
+            envVariables.database
+        );
+    }
+
+    /**
+     * 接続
+     * @param {string} host
+     * @param {string} user
+     * @param {string} password
+     * @param {string} database
+     * @returns {Promise}
+     */
+    public async connect(host: string, user: string, password: string, database: string) {
+        this.client = new Client({
+            host: host,
+            user: user,
+            password: password,
+            database: database
+        });
+        await this.client.connect();
+    }
+
+    /**
+     * クエリ実行
+     * @param {string} query
+     * @param {any[]} parameters
+     * @returns {Promise<unknown>}
+     */
+    public async query(query: string, parameters: any[] = []): Promise<unknown> {
+        return (await this.client.query(query, parameters)).rows;
+    }
+
+    /**
+     * 終了
+     * @returns {Promise}
+     */
+    public async end() {
+        await this.client.end();
+    }
+}
