@@ -65,7 +65,7 @@ version_major integer NOT NULL,
 version_minor integer NOT NULL,
 plugin_id integer,
 PRIMARY KEY(schema_id, valid_from)
--- TODOšİ’èƒe[ƒuƒ‹–¢ì¬
+-- TODOâ˜…è¨­å®šãƒ†ãƒ¼ãƒ–ãƒ«æœªä½œæˆ
 -- FOREIGN KEY(plugin_id) REFERENCES jesgo_setting(plugin_id)
 );
 
@@ -83,9 +83,9 @@ last_updated timestamptz NOT NULL,
 readonly boolean DEFAULT FALSE,
 deleted boolean DEFAULT FALSE,
 FOREIGN KEY(case_id) REFERENCES jesgo_case(case_id),
--- ”z—ñ‚Ì’†‚ÍŠO•”ƒL[§–ñ‚ª‚«‚©‚È‚¢
+-- é…åˆ—ã®ä¸­ã¯å¤–éƒ¨ã‚­ãƒ¼åˆ¶ç´„ãŒãã‹ãªã„
 -- FOREIGN KEY(child_documents) REFERENCES jesgo_document(document_id),
--- •¡‡åƒL[ˆµ‚¢‚È‚Ì‚ÅŠO•”ƒL[§–ñ‚ª‚«‚©‚È‚¢
+-- è¤‡åˆä¸»ã‚­ãƒ¼æ‰±ã„ãªã®ã§å¤–éƒ¨ã‚­ãƒ¼åˆ¶ç´„ãŒãã‹ãªã„
 -- FOREIGN KEY(schema_id) REFERENCES jesgo_document_schema(schema_id),
 FOREIGN KEY(registrant) REFERENCES jesgo_user(user_id)
 );
