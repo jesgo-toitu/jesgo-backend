@@ -25,7 +25,7 @@ UTF-8
 | document_id | serial | PK |  | 内部で使用するドキュメントID |
 | case_id | integer | FK,NOT NULL |  | ドキュメントの紐付く患者ID |
 | event_date | date |  |  | ドキュメントイベントの日付 |
-| document | JSON | NOT NULL |  | スキーマに沿って記録されたドキュメント情報(JSON) |
+| document | JSONB | NOT NULL |  | スキーマに沿って記録されたドキュメント情報(JSON) |
 | child_documents | integer[] | FK(制約は不可) |  | このドキュメントの下の階層を構成するドキュメントのドキュメントIDを保持した配列 |
 | schema_id | integer | FK,NOT NULL |  | ドキュメントを構成するスキーマのID |
 | schema_major_version | integer |  |  | スキーマのメジャーバージョン |

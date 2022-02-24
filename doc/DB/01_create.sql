@@ -74,7 +74,7 @@ CREATE TABLE IF NOT EXISTS jesgo_document
 document_id serial PRIMARY KEY,
 case_id integer NOT NULL,
 event_date date,
-document JSON NOT NULL,
+document JSONB NOT NULL,
 child_documents integer[],
 schema_id integer NOT NULL,
 schema_major_version integer,
