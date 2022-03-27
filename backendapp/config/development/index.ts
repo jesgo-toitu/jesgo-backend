@@ -6,7 +6,7 @@ const _publicKey: string = fs.readFileSync('./backendapp/config/development/publ
 
 const devVariables: EnvVariables = {
     database: "jesgo_db",
-    user: "postgres",
+    user: "jesgo",
     password: "12345678",
     host: "localhost",
     port: 5432,
