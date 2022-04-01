@@ -112,3 +112,6 @@ dist
 
 # 暗号鍵
 *.key
+
+# スキーマファイル
+backendapp/import/*

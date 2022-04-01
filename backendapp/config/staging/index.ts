@@ -1,14 +1,14 @@
 import { EnvVariables } from '../';
 
 const stgVariables: EnvVariables = {
-    database: "jesgo_db",
-    user: "jesgo",
-    password: "12345678",
-    host: "localhost",
-    port: 5432,
-    passwordSalt: "abcde",
-    privateKey: "",
-    publicKey: "",
+  database: 'jesgo_db',
+  user: 'postgres',
+  password: '12345678',
+  host: 'localhost',
+  port: 5432,
+  passwordSalt: 'abcde',
+  privateKey: '',
+  publicKey: '',
 };
 
 export default stgVariables;

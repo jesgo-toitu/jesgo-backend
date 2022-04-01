@@ -1,4 +1,4 @@
-import { DbAccess } from '#/logic/DbAccess';
+import { DbAccess } from '../../backendapp/logic/DbAccess';
 
 
 test('connectOk', () => {
