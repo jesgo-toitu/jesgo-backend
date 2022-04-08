@@ -1,5 +1,6 @@
 import { DbAccess } from '../logic/DbAccess';
 import { ParsedQs } from 'qs';
+import { ApiReturnObject, RESULT } from '../logic/ApiCommon';
 
 //インターフェース
 export interface dbRow {
@@ -13,8 +14,10 @@ export interface dbRow {
   child_documents: number[];
   document_id: number;
   case_id: number;
+  deleted: boolean;
 }
 interface userData {
+  caseId: number;
   patientId: string;
   patientName: string;
   age: number;
@@ -31,10 +34,6 @@ interface userData {
   threeYearPrognosis: string[];
   fiveYearPrognosis: string[];
   status: string[];
-}
-
-interface userDataList {
-  data: userData[];
 }
 
 export interface searchPatientRequest extends ParsedQs {
@@ -85,7 +84,7 @@ const addStatus = (
 
 export const searchPatients = async (
   query: searchPatientRequest
-): Promise<userDataList> => {
+): Promise<ApiReturnObject> => {
   const dbAccess = new DbAccess();
   await dbAccess.connectWithConf();
   const dbRows: dbRow[] = (await dbAccess.query(
@@ -93,21 +92,10 @@ export const searchPatients = async (
     HIS_id, name, DATE_PART('year', AGE(now(),date_of_birth)) as age, sch.schema_id_string as schemaidstring, 
     doc.document->'properties'->>'診断日' as since, to_char(ca.last_updated, 'yyyy/mm/dd') as last_updated, 
     doc.document->'properties'->>'FIGO' as figo, 
-    doc.child_documents, doc.document_id as document_id, ca.case_id as case_id 
-    FROM jesgo_case ca JOIN jesgo_document doc ON ca.case_id = doc.case_id JOIN jesgo_document_schema sch ON doc.schema_id = sch.schema_id 
-    WHERE sch.schema_id_string IN (
-    '/schema/EM/root', 
-    '/schema/CC/root', 
-    '/schema/OV/root', 
-    '/schema/CC/staging', 
-    '/schema/treatment/operation', 
-    '/schema/treatment/chemotherapy', 
-    '/schema/treatment/radiotherapy', 
-    '/schema/treatment/operation_adverse_events',
-    '/schema/surveillance',
-    '/schema/recurrence'
-    ) 
-    ORDER BY ca.case_id , sch.schema_id_string`
+    doc.child_documents, doc.document_id as document_id, ca.case_id as case_id, doc.deleted as deleted  
+    FROM jesgo_document doc JOIN jesgo_document_schema sch ON doc.schema_id = sch.schema_id RIGHT OUTER JOIN jesgo_case ca ON ca.case_id = doc.case_id
+    WHERE ca.deleted = false 
+    ORDER BY ca.case_id , sch.schema_id_string;`
   )) as dbRow[];
 
   let recurrenceChildDocumentIds: number[] = [];
@@ -136,6 +124,7 @@ export const searchPatients = async (
       // 存在しない場合は新規に作成、caseIdListにも記録する
       caseIdList.push(caseId);
       userData = {
+        caseId: caseId,
         patientId: dbRow.his_id,
         patientName: dbRow.name,
         age: dbRow.age,
@@ -155,6 +144,12 @@ export const searchPatients = async (
       };
       rowIndex = userDataList.push(userData);
     }
+
+    // 削除されているドキュメントの場合、ステータス系の更新は行わない
+    if (dbRow.deleted) {
+      continue;
+    }
+
     // がん種系
     if (
       dbRow.schemaidstring === '/schema/EM/root' ||
@@ -277,5 +272,33 @@ export const searchPatients = async (
       }
     }
   }
-  return { data: userDataList };
+  return { statusNum: RESULT.NORMAL_TERMINATION, body: { data: userDataList } };
+};
+
+export const deletePatient = async (
+  caseId: number
+): Promise<ApiReturnObject> => {
+  let returnObj = true;
+  const dbAccess = new DbAccess();
+  try {
+    await dbAccess.connectWithConf();
+    await dbAccess.query(
+      'UPDATE jesgo_case SET deleted = true WHERE case_id = $1',
+      [caseId]
+    );
+    await dbAccess.query(
+      'UPDATE jesgo_document SET deleted = true WHERE case_id = $1',
+      [caseId]
+    );
+  } catch (e) {
+    console.log(e);
+    returnObj = false;
+  } finally {
+    await dbAccess.end();
+  }
+  if (returnObj) {
+    return { statusNum: RESULT.NORMAL_TERMINATION, body: null };
+  } else {
+    return { statusNum: RESULT.ABNORMAL_TERMINATION, body: null };
+  }
 };

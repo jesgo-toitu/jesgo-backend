@@ -7,6 +7,7 @@ import {
   verify,
 } from 'jsonwebtoken';
 import envVariables from '../config';
+import { ApiReturnObject, RESULT } from '../logic/ApiCommon';
 
 //インターフェース
 export interface Jwt {
@@ -21,10 +22,27 @@ export interface dispUser {
   roll_id: number;
 }
 
+export interface localStorageObject {
+  user_id: number;
+  display_name: string;
+  token: string;
+  reflesh_token: string;
+}
 export interface userObject extends dispUser {
   password: string;
 }
 
+export const roll = {
+  login: 'login',
+  view: 'view',
+  add: 'add',
+  edit: 'edit',
+  remove: 'remove',
+  dataManage: 'data_manage',
+  systemManage: 'system_manage',
+};
+
+export const TOKEN_EXPIRED_ERROR = -10;
 /**
  * ユーザ情報の取得(一覧)
  * 権限：管理者
@@ -236,20 +254,77 @@ export const deleteUser = (user_id: string) => {
  * @param token
  * @returns ユーザ情報(dispUser)
  */
-export const decordJwt = (token: Jwt) => {
-  console.log('decordJwt');
-  console.log(token.token);
+export const decordJwt = (token: Jwt, isReflesh = false): ApiReturnObject => {
   try {
-    const decoded = verify(token.token, envVariables.privateKey) as dispUser;
-    return decoded;
+    let secret = envVariables.privateKey;
+    if (isReflesh) {
+      secret += 'reflesh';
+    }
+    const decoded = verify(token.token, secret) as dispUser;
+    return { statusNum: RESULT.NORMAL_TERMINATION, body: decoded };
   } catch (e) {
     if (e instanceof TokenExpiredError) {
       console.error('トークンの有効期限が切れています。', e);
+      return { statusNum: TOKEN_EXPIRED_ERROR, body: null };
     } else if (e instanceof JsonWebTokenError) {
       console.error('トークンが不正です。', e);
     } else {
       console.error('トークンの検証でその他のエラーが発生しました。', e);
     }
+  }
+  return { statusNum: RESULT.ABNORMAL_TERMINATION, body: null };
+};
+
+/**
+ *
+ * @param token Jwt、あるいはNULL
+ * @param targetAuth 確認したい権限、roll.~で指定できる
+ * @return 該当権限を持っているかをTRUEorFALSEで返す
+ **/
+export const checkAuth = async (
+  token: string | undefined,
+  targetAuth: string
+): Promise<ApiReturnObject> => {
+  try {
+    let myApiReturnObject: ApiReturnObject = {
+      statusNum: RESULT.ABNORMAL_TERMINATION,
+      body: null,
+    };
+    if (token === undefined) {
+      return myApiReturnObject;
+    }
+    const jwt: Jwt = { token: token };
+    myApiReturnObject = decordJwt(jwt);
+    // トークン期限切れエラー含むエラーが出ている場合、その旨をそのまま返す
+    if (
+      myApiReturnObject.statusNum === RESULT.ABNORMAL_TERMINATION ||
+      myApiReturnObject.statusNum === TOKEN_EXPIRED_ERROR
+    ) {
+      return myApiReturnObject;
+    }
+
+    // トークンが正常にデコード出来た場合
+    const user: dispUser = myApiReturnObject.body as dispUser;
+    const dbAccess = new DbAccess();
+    await dbAccess.connectWithConf();
+    const ret = (await dbAccess.query(
+      'SELECT $1 AS auth FROM jesgo_user u JOIN jesgo_user_roll r ON u.roll_id = r.roll_id WHERE user_id = $2',
+      [targetAuth, user.user_id]
+    )) as { auth: boolean }[];
+    await dbAccess.end();
+
+    if (ret.length > 0) {
+      // レコードがあればその結果を返却する
+      myApiReturnObject.body = ret[0].auth;
+    } else {
+      // レコードが見つからなければbodyをnullにしてエラーを返却する
+      console.log('error');
+      myApiReturnObject.statusNum = RESULT.ABNORMAL_TERMINATION;
+      myApiReturnObject.body = null;
+    }
+    return myApiReturnObject;
+  } catch {
+    return { statusNum: RESULT.ABNORMAL_TERMINATION, body: null };
   }
 };
 
@@ -257,13 +332,12 @@ export const decordJwt = (token: Jwt) => {
  * ID、PWを照合し、適切なものがあれば認証用JWTを返す
  * @param name ログイン用ID
  * @param password パスワード(平文)
- * @returns 認証用JWT,エラーの時はtokenに"error"が返る
+ * @returns JWTと表示名、ユーザID
  */
 export const loginUser = async (
   name: string,
   password: string
-): Promise<Jwt> => {
-  console.log('loginUser');
+): Promise<ApiReturnObject> => {
   const dbAccess = new DbAccess();
   const plainPassword = password + envVariables.passwordSalt;
   await dbAccess.connectWithConf();
@@ -274,16 +348,79 @@ export const loginUser = async (
   await dbAccess.end();
   if (ret.length > 0) {
     if (compareSync(plainPassword, ret[0].password_hash)) {
-      const token: Jwt = { token: '' };
-      token.token = sign(ret[0], envVariables.privateKey, {
-        expiresIn: '3h',
+      const returnObj: localStorageObject = {
+        user_id: ret[0].user_id,
+        display_name: ret[0].display_name,
+        token: '',
+        reflesh_token: '',
+      };
+      returnObj.token = sign(ret[0], envVariables.privateKey, {
+        expiresIn: '1h',
       });
-      return token;
+      returnObj.reflesh_token = sign(
+        ret[0],
+        `${envVariables.privateKey}reflesh`,
+        {
+          expiresIn: '3h',
+        }
+      );
+      return { statusNum: RESULT.NORMAL_TERMINATION, body: returnObj };
     } else {
       console.log('err');
-      return { token: 'error' };
+      return {
+        statusNum: RESULT.ABNORMAL_TERMINATION,
+        body: { token: 'error', reflesh_token: 'error' },
+      };
     }
   } else {
-    return { token: 'error' };
+    return {
+      statusNum: RESULT.ABNORMAL_TERMINATION,
+      body: { token: 'error', reflesh_token: 'error' },
+    };
+  }
+};
+
+export const refleshLogin = (oldToken: string | undefined): ApiReturnObject => {
+  try {
+    let myApiReturnObject: ApiReturnObject = {
+      statusNum: RESULT.ABNORMAL_TERMINATION,
+      body: null,
+    };
+    if (oldToken === undefined) {
+      return myApiReturnObject;
+    }
+    const jwt: Jwt = { token: oldToken };
+    myApiReturnObject = decordJwt(jwt, true);
+    // リフレッシュトークン期限切れエラー含むエラーが出ている場合、異常終了にして返す(期限切れループしないため)
+    if (
+      myApiReturnObject.statusNum === RESULT.ABNORMAL_TERMINATION ||
+      myApiReturnObject.statusNum === TOKEN_EXPIRED_ERROR
+    ) {
+      return { statusNum: RESULT.ABNORMAL_TERMINATION, body: null };
+    }
+
+    // リフレッシュトークンが正常にデコード出来た場合、再度トークン、リフレッシュトークンを発行して返す
+    const oldUser: dispUser = myApiReturnObject.body as dispUser;
+    const newUser: dispUser = {
+      user_id: oldUser.user_id,
+      name: oldUser.name,
+      display_name: oldUser.display_name,
+      roll_id: oldUser.roll_id,
+      password_hash: oldUser.password_hash,
+    };
+    const token: { token: string; reflesh_token: string } = {
+      token: '',
+      reflesh_token: '',
+    };
+    token.token = sign(newUser, envVariables.privateKey, {
+      expiresIn: '1h',
+    });
+    token.reflesh_token = sign(newUser, `${envVariables.privateKey}reflesh`, {
+      expiresIn: '3h',
+    });
+    return { statusNum: RESULT.NORMAL_TERMINATION, body: token };
+  } catch (err) {
+    console.log(err);
+    return { statusNum: RESULT.ABNORMAL_TERMINATION, body: null };
   }
 };

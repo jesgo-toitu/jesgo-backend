@@ -1,5 +1,6 @@
 import { DbAccess } from '../logic/DbAccess';
 import { readFileSync, readdirSync, rename, existsSync, mkdirSync } from 'fs';
+import { ApiReturnObject, RESULT } from '../logic/ApiCommon';
 
 //インターフェース
 
@@ -425,7 +426,7 @@ const schemaListUpdate = async () => {
  * @returns TRUEorFALSE(新規登録の成否)
  */
 export const jsonToSchema = () => {
-  return new Promise<{ aaa: string }>((solve) => {
+  return new Promise<ApiReturnObject>((solve) => {
     console.log('json2schema');
 
     const dirPath = './backendapp/import';
@@ -451,6 +452,6 @@ export const jsonToSchema = () => {
     // eslint-disable-next-line @typescript-eslint/no-floating-promises
     schemaListUpdate();
 
-    solve({ aaa: 'bbb' });
+    solve({ statusNum: RESULT.NORMAL_TERMINATION, body: null });
   });
 };

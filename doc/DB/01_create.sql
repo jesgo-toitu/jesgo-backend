@@ -43,6 +43,7 @@ HIS_id text UNIQUE NOT NULL,
 decline boolean DEFAULT FALSE,
 registrant integer,
 last_updated timestamptz NOT NULL,
+deleted boolean DEFAULT FALSE,
 FOREIGN KEY(sex) REFERENCES jesgo_sex_master(sex_identifier),
 FOREIGN KEY(registrant) REFERENCES jesgo_user(user_id)
 );

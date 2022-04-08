@@ -1,3 +1,4 @@
+import { ApiReturnObject, RESULT } from '../logic/ApiCommon';
 import { DbAccess } from '../logic/DbAccess';
 import { numArrayCast2Pg } from './JsonToDatabase';
 
@@ -30,30 +31,34 @@ export type schemaRecord = {
 
 export const getJsonSchema = async (
   body: getJsonSchemaBody
-): Promise<records> => {
-  let query = '';
-  if (body.ids !== undefined) {
-    const ids: number[] = body.ids;
-    query = `SELECT * FROM jesgo_document_schema WHERE schema_id IN (${numArrayCast2Pg(
-      ids
-    )})`;
-  } else {
-    query = `select schema_id, document_schema->'jesgo:parentschema' from jesgo_document_schema where document_schema->>'jesgo:parentschema' like '%"/"%';`;
+): Promise<ApiReturnObject> => {
+  try {
+    let query = '';
+    if (body.ids !== undefined) {
+      const ids: number[] = body.ids;
+      query = `SELECT * FROM jesgo_document_schema WHERE schema_id IN (${numArrayCast2Pg(
+        ids
+      )})`;
+    } else {
+      query = `select schema_id, document_schema->'jesgo:parentschema' from jesgo_document_schema where document_schema->>'jesgo:parentschema' like '%"/"%';`;
+    }
+
+    const dbAccess = new DbAccess();
+    await dbAccess.connectWithConf();
+    const ret = (await dbAccess.query(query)) as schemaRecord[];
+    await dbAccess.end();
+
+    const records: records = {};
+    for (let index = 0; index < ret.length; index++) {
+      const record = ret[index];
+      const strId = record.schema_id.toString();
+      records[strId] = record;
+    }
+    return { statusNum: RESULT.NORMAL_TERMINATION, body: records };
+  } catch (e) {
+    console.log(e);
+    return { statusNum: RESULT.ABNORMAL_TERMINATION, body: null };
   }
-
-  const dbAccess = new DbAccess();
-  await dbAccess.connectWithConf();
-  const ret = (await dbAccess.query(query)) as schemaRecord[];
-  await dbAccess.end();
-
-  const records: records = {};
-  for (let index = 0; index < ret.length; index++) {
-    const record = ret[index];
-    const strId = record.schema_id.toString();
-    records[strId] = record;
-  }
-
-  return records;
 };
 
 //
@@ -84,6 +89,7 @@ export type jesgoCaseDefine = {
   decline: boolean;
   registrant: string;
   last_updated: string;
+  is_new_case: boolean;
 };
 
 // valueの定義
@@ -106,15 +112,15 @@ export type jesgoDocumentObjDefine = {
   key: string;
   value: jesgoDocumentValueItem;
   root_order: number;
+  event_date_prop_name: string;
+  death_data_prop_name: string;
+  delete_document_keys: string[];
 };
 
 // 保存用のオブジェクト この内容をJSON化して送信
 export interface SaveDataObjDefine {
   jesgo_case: jesgoCaseDefine;
   jesgo_document: jesgoDocumentObjDefine[];
-  event_date_prop_name: string;
-  death_data_prop_name: string;
-  delete_document_keys: string[];
 }
 
 const str2Date = (dateStr: string): string | null => {
@@ -136,7 +142,10 @@ const str2Num = (numStr: string): number => {
  */
 export const registrationCaseAndDocument = async (
   saveDataObjDefine: SaveDataObjDefine
-): Promise<boolean> => {
+): Promise<ApiReturnObject> => {
+  // 戻り値 0:正常, -1:異常(不明), -2:ID被り
+  const ID_DUPLICATION = -2;
+
   const dbAccess = new DbAccess();
 
   try {
@@ -145,25 +154,31 @@ export const registrationCaseAndDocument = async (
     await dbAccess.query('BEGIN');
     // HIS_IDが存在する場合はcase_idを取得
     let caseId = -1;
-    let ret: { case_id: number }[] = (await dbAccess.query(
-      'SELECT case_id FROM jesgo_case WHERE his_id = $1',
+    const ret = (await dbAccess.query(
+      'SELECT case_id, deleted FROM jesgo_case WHERE his_id = $1',
       [saveDataObjDefine.jesgo_case.his_id]
-    )) as { case_id: number }[];
+    )) as { case_id: number; deleted: boolean }[];
     if (ret.length > 0) {
-      // - 取得したcase_idで症例情報を更新
-      caseId = ret[0].case_id;
-      await dbAccess.query(
-        'UPDATE jesgo_case SET name = $1, date_of_birth = $2, date_of_death = $3, sex = $4, decline =$5, registrant = $6, last_updated = now() WHERE case_id = $7',
-        [
-          saveDataObjDefine.jesgo_case.name,
-          str2Date(saveDataObjDefine.jesgo_case.date_of_birth),
-          str2Date(saveDataObjDefine.jesgo_case.date_of_death),
-          saveDataObjDefine.jesgo_case.sex,
-          saveDataObjDefine.jesgo_case.decline,
-          str2Num(saveDataObjDefine.jesgo_case.registrant),
-          caseId,
-        ]
-      );
+      // - 同一IDの症例情報がある
+      if (ret[0].deleted || saveDataObjDefine.jesgo_case.is_new_case == false) {
+        // 削除済かPOSTされた情報が編集であれば取得したcase_idで症例情報を更新
+        caseId = ret[0].case_id;
+        await dbAccess.query(
+          'UPDATE jesgo_case SET name = $1, date_of_birth = $2, date_of_death = $3, sex = $4, decline =$5, registrant = $6, deleted = false, last_updated = now() WHERE case_id = $7',
+          [
+            saveDataObjDefine.jesgo_case.name,
+            str2Date(saveDataObjDefine.jesgo_case.date_of_birth),
+            str2Date(saveDataObjDefine.jesgo_case.date_of_death),
+            saveDataObjDefine.jesgo_case.sex,
+            saveDataObjDefine.jesgo_case.decline,
+            str2Num(saveDataObjDefine.jesgo_case.registrant),
+            caseId,
+          ]
+        );
+      } else {
+        // - 新規作成で且つ被りIDが削除されていない場合は警告
+        return { statusNum: ID_DUPLICATION, body: null };
+      }
     } else {
       // HIS_IDがなければcase_idを指定せずに症例情報を新規登録
       await dbAccess.query(
@@ -178,11 +193,11 @@ export const registrationCaseAndDocument = async (
           str2Num(saveDataObjDefine.jesgo_case.registrant),
         ]
       );
-      ret = (await dbAccess.query(
+      const lastValue = (await dbAccess.query(
         'SELECT last_value as case_id FROM jesgo_case_case_id_seq'
       )) as { case_id: number }[];
       // - 最新のcase_id(今登録したもの)を再取得
-      caseId = ret[0].case_id;
+      caseId = lastValue[0].case_id;
     }
 
     const dummyNumber: { [key: string]: number } = {};
@@ -320,7 +335,7 @@ export const registrationCaseAndDocument = async (
       }
     }
     await dbAccess.query('COMMIT');
-    return true;
+    return { statusNum: RESULT.NORMAL_TERMINATION, body: null };
   } catch (e) {
     console.log('catch');
     console.log(e);
@@ -328,7 +343,7 @@ export const registrationCaseAndDocument = async (
   } finally {
     await dbAccess.end();
   }
-  return false;
+  return { statusNum: RESULT.ABNORMAL_TERMINATION, body: null };
 };
 
 /**
@@ -336,49 +351,54 @@ export const registrationCaseAndDocument = async (
  */
 export const getCaseAndDocument = async (
   caseId: number
-): Promise<SaveDataObjDefine> => {
-  const dbAccess = new DbAccess();
-  await dbAccess.connectWithConf();
-  // 症例データを取得して格納
-  const retCase = (await dbAccess.query(
-    'SELECT * FROM jesgo_case WHERE case_id = $1',
-    [caseId]
-  )) as jesgoCaseDefine[];
-  const returnObj: SaveDataObjDefine = {
-    jesgo_case: retCase[0],
-    jesgo_document: [],
-    event_date_prop_name: '19700101',
-    death_data_prop_name: '19700101',
-    delete_document_keys: [],
-  };
-
-  // 削除されていない関連づくドキュメントデータを取得
-  const retDocs = (await dbAccess.query(
-    'SELECT * FROM jesgo_document WHERE case_id = $1 AND deleted = false',
-    [caseId]
-  )) as jesgoDocumentFromDb[];
-  for (let index = 0; index < retDocs.length; index++) {
-    const doc = retDocs[index];
-    const newDoc: jesgoDocumentObjDefine = {
-      key: doc.document_id.toString(),
-      value: {
-        case_id: caseId.toString(),
-        event_date: doc.event_date,
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        document: doc.document,
-        child_documents: doc.child_documents,
-        schema_id: doc.schema_id,
-        schema_major_version: doc.schema_major_version,
-        registrant: doc.registrant,
-        last_updated: doc.last_updated,
-        readonly: doc.readonly,
-        deleted: doc.deleted,
-      },
-      root_order: doc.root_order,
+): Promise<ApiReturnObject> => {
+  try {
+    const dbAccess = new DbAccess();
+    await dbAccess.connectWithConf();
+    // 症例データを取得して格納
+    const retCase = (await dbAccess.query(
+      'SELECT * FROM jesgo_case WHERE case_id = $1',
+      [caseId]
+    )) as jesgoCaseDefine[];
+    const returnObj: SaveDataObjDefine = {
+      jesgo_case: retCase[0],
+      jesgo_document: [],
     };
 
-    returnObj.jesgo_document.push(newDoc);
+    // 削除されていない関連づくドキュメントデータを取得
+    const retDocs = (await dbAccess.query(
+      'SELECT * FROM jesgo_document WHERE case_id = $1 AND deleted = false',
+      [caseId]
+    )) as jesgoDocumentFromDb[];
+    for (let index = 0; index < retDocs.length; index++) {
+      const doc = retDocs[index];
+      const newDoc: jesgoDocumentObjDefine = {
+        key: doc.document_id.toString(),
+        value: {
+          case_id: caseId.toString(),
+          event_date: doc.event_date,
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+          document: doc.document,
+          child_documents: doc.child_documents,
+          schema_id: doc.schema_id,
+          schema_major_version: doc.schema_major_version,
+          registrant: doc.registrant,
+          last_updated: doc.last_updated,
+          readonly: doc.readonly,
+          deleted: doc.deleted,
+        },
+        root_order: doc.root_order,
+        event_date_prop_name: '19700101',
+        death_data_prop_name: '19700101',
+        delete_document_keys: [],
+      };
+
+      returnObj.jesgo_document.push(newDoc);
+    }
+    await dbAccess.end();
+    return { statusNum: RESULT.NORMAL_TERMINATION, body: returnObj };
+  } catch (e) {
+    console.log(e);
+    return { statusNum: RESULT.ABNORMAL_TERMINATION, body: null };
   }
-  await dbAccess.end();
-  return returnObj;
 };

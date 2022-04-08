@@ -2,23 +2,18 @@ import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
 import {
-  decordJwt,
-  dispUser,
-  editUserProfile,
-  editMyProfile,
-  Jwt,
   loginUser,
-  signUpUser,
-  lookupUser,
   userObject,
+  checkAuth,
+  roll,
+  refleshLogin,
 } from '../services/Users';
 import {
+  deletePatient,
   searchPatientRequest,
   searchPatients,
 } from '../services/SearchPatient';
-import { searchDocumentFromCaseId } from '../services/SearchDocument';
 import { jsonToSchema } from '../services/JsonToDatabase';
-import { checkAuth, roll } from '../logic/Auth';
 import Router from 'express-promise-router';
 import {
   getCaseAndDocument,
@@ -27,6 +22,7 @@ import {
   registrationCaseAndDocument,
   SaveDataObjDefine,
 } from '../services/Schemas';
+import { ApiReturnObject, getToken, RESULT } from '../logic/ApiCommon';
 
 const app = express();
 app.use(helmet());
@@ -36,89 +32,158 @@ app.use(cors());
 const router = Router();
 
 // routerにルーティングの動作を記述する
-router.post('/registrationCaseAndDocument/', (req, res, next) => {
-  registrationCaseAndDocument(req.body as SaveDataObjDefine)
+
+/**
+ * ログイン関連用 start
+ * login
+ * relogin
+ */
+router.post('/login/', (req, res, next) => {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+  const body: userObject = req.body.data as userObject;
+  loginUser(body.name, body.password)
     .then((result) => res.status(200).send(result))
     .catch(next);
 });
 
-router.get('/getCaseAndDocument/:caseId', (req, res, next) => {
-  getCaseAndDocument(Number(req.params.caseId))
-    .then((result) => res.status(200).send(result))
-    .catch(next);
+router.post('/relogin/', (req, res, next) => {
+  try {
+    // eslint-disable-next-line
+    const result = refleshLogin(req.body.reflesh_token as string);
+    res.status(200).send(result);
+  } catch {
+    next;
+  }
 });
 
+/**
+ * ログイン関連用 end
+ */
+
+/**
+ * リスト画面用 start
+ * patientlist
+ * deleteCase
+ */
+router.get('/patientlist', async (req, res, next) => {
+  // 権限の確認
+  const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.view);
+  if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
+    res.status(200).send(authResult);
+  } else {
+    if (authResult.body) {
+      searchPatients(req.query as searchPatientRequest)
+        .then((result) => res.status(200).send(result))
+        .catch(next);
+    }
+    // 権限が無い場合
+    else {
+      console.log('auth error');
+    }
+  }
+});
+
+router.delete('/deleteCase/:caseId', async (req, res, next) => {
+  // 権限の確認
+  const authResult: ApiReturnObject = await checkAuth(
+    getToken(req),
+    roll.remove
+  );
+  if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
+    res.status(200).send(authResult);
+  }
+  if (authResult.body) {
+    deletePatient(Number(req.params.caseId))
+      .then((result) => res.status(200).send(result))
+      .catch(next);
+  }
+  // 権限が無い場合
+  else {
+    console.log('auth error');
+  }
+});
+
+/**
+ * リスト画面用 end
+ */
+
+/**
+ * 症例登録画面用 start
+ * getJsonSchema
+ * deleteCase
+ */
+
+router.post('/getJsonSchema', async (req, res, next) => {
+  // 権限の確認
+  const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.view);
+  if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
+    res.status(200).send(authResult);
+  }
+  if (authResult.body) {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    getJsonSchema(req.body.data as getJsonSchemaBody)
+      .then((result) => res.status(200).send(result))
+      .catch(next);
+  }
+  // 権限が無い場合
+  else {
+    console.log('auth error');
+  }
+});
+
+router.post('/registrationCaseAndDocument/', async (req, res, next) => {
+  // 権限の確認
+  const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.add);
+  if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
+    res.status(200).send(authResult);
+  }
+  if (authResult.body) {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    registrationCaseAndDocument(req.body.data as SaveDataObjDefine)
+      .then((result) => res.status(200).send(result))
+      .catch(next);
+  }
+  // 権限が無い場合
+  else {
+    console.log('auth error');
+  }
+});
+
+router.get('/getCaseAndDocument/:caseId', async (req, res, next) => {
+  // 権限の確認
+  const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.view);
+  if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
+    res.status(200).send(authResult);
+  }
+  if (authResult.body) {
+    getCaseAndDocument(Number(req.params.caseId))
+      .then((result) => res.status(200).send(result))
+      .catch(next);
+  }
+  // 権限が無い場合
+  else {
+    console.log('auth error');
+  }
+});
+
+/**
+ * 症例登録画面用 end
+ */
+
+/**
+ * プラグイン用 start
+ */
 router.post('/json2schema/', (req, res, next) => {
   jsonToSchema()
     .then((result) => res.status(200).send(result))
     .catch(next);
 });
 
-router.post('/getJsonSchema', async (req, res, next) => {
-  // ★TODO : stab
-  /*
-  let user_id = -1;
-  if (req.header('token') != null) {
-    console.log('token ready');
-    const token: Jwt = { token: req.header('token') as string };
-    const userInfo: dispUser = decordJwt(token) as dispUser;
-    user_id = userInfo.user_id;
-  }
-  // トークンがない場合
-  else {
-    console.log('token not ready');
-    res.redirect("/login");
-  }
-  
-  // const result: boolean = await checkAuth(user_id, roll.add);
-  */
-  const result = true;
+/**
+ * プラグイン用 end
+ */
 
-  if (result) {
-    getJsonSchema(req.body as getJsonSchemaBody)
-      .then((result) => res.status(200).send(result))
-      .catch(next);
-  }
-  // 権限が無い場合
-  else {
-    console.log('auth error');
-    res.redirect('/login');
-  }
-});
-
-router.get('/patientlist', async (req, res, next) => {
-  let user_id = -1;
-  if (req.header('token') != null) {
-    console.log('token ready');
-    const token: Jwt = { token: req.header('token') as string };
-    const userInfo: dispUser = decordJwt(token) as dispUser;
-    user_id = userInfo.user_id;
-  }
-  // トークンがない場合
-  else {
-    console.log('token not ready');
-    res.redirect('/login');
-  }
-
-  const result: boolean = await checkAuth(user_id, roll.view);
-  if (result) {
-    searchPatients(req.query as searchPatientRequest)
-      .then((result) => res.status(200).send(result))
-      .catch(next);
-  }
-  // 権限が無い場合
-  else {
-    console.log('auth error');
-    res.redirect('/login');
-  }
-});
-
-router.get('/document/:caseid', (req, res, next) => {
-  searchDocumentFromCaseId(req.params.caseid)
-    .then((result) => res.status(200).send(result))
-    .catch(next);
-});
-
+/*
 router.post('/signup/', async (req, res, next) => {
   const body: userObject = req.body as userObject;
   let user_id = -1;
@@ -131,7 +196,6 @@ router.post('/signup/', async (req, res, next) => {
   // トークンがない場合
   else {
     console.log('token not ready');
-    res.redirect('/login');
   }
 
   const result: boolean = await checkAuth(user_id, roll.systemManage);
@@ -143,7 +207,6 @@ router.post('/signup/', async (req, res, next) => {
   // 権限が無い場合
   else {
     console.log('auth error');
-    res.redirect('/login');
   }
 });
 
@@ -159,7 +222,6 @@ router.post('/edituserprofile/', async (req, res, next) => {
   // トークンがない場合
   else {
     console.log('token not ready');
-    res.redirect('/login');
   }
 
   const result: boolean = await checkAuth(user_id, roll.systemManage);
@@ -177,7 +239,6 @@ router.post('/edituserprofile/', async (req, res, next) => {
   // 権限が無い場合
   else {
     console.log('auth error');
-    res.redirect('/login');
   }
 });
 
@@ -192,7 +253,6 @@ router.get('/search/', async (req, res, next) => {
   // トークンがない場合
   else {
     console.log('token not ready');
-    res.redirect('/login');
   }
 
   const result: boolean = await checkAuth(user_id, roll.view);
@@ -204,7 +264,6 @@ router.get('/search/', async (req, res, next) => {
   // 権限が無い場合
   else {
     console.log('auth error');
-    res.redirect('/login');
   }
 });
 
@@ -220,7 +279,6 @@ router.post('/editmyprofile/', (req, res, next) => {
   // トークンがない場合
   else {
     console.log('token not ready');
-    res.redirect('/login');
   }
 
   // ★TODO：stab
@@ -234,17 +292,10 @@ router.post('/editmyprofile/', (req, res, next) => {
   // 自分の情報で無い場合
   else {
     console.log('auth error');
-    res.redirect('/login');
   }
 });
+*/
 
-router.post('/login/', (req, res, next) => {
-  console.log(req.body);
-  const body: userObject = req.body as userObject;
-  loginUser(body.name, body.password)
-    .then((result) => res.status(200).send(result))
-    .catch(next);
-});
 // -------------------------------------------------
 //  以下、何のルーティングにもマッチしないorエラー
 // -------------------------------------------------

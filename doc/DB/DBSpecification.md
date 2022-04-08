@@ -25,6 +25,7 @@ UTF-8
 | decline       | boolean     |                  | FALSE      | 臨床試験登録拒否を表明しているか否か    |
 | registrant    | integer     | FK               |            | 最終更新登録者 ID                       |
 | last_updated  | timestamptz | NOT NULL         |            | 最終更新タイムスタンプ                  |
+| deleted       | boolean     |                  | FALSE      | 削除済みフラグ                          |
 
 ## ドキュメント (jesgo_document)
 
