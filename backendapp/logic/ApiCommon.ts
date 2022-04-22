@@ -9,6 +9,9 @@ export interface ApiReturnObject {
 export const RESULT = {
   NORMAL_TERMINATION: 0,
   ABNORMAL_TERMINATION: -1,
+  TOKEN_EXPIRED_ERROR: -10,
+  FAILED_USER_ALREADY_REGISTERED:-100,
+  FAILED_USER_ERROR:-101,
 };
 
 export const getToken = (req: any): string => {

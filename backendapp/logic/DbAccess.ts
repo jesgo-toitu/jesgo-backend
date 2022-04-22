@@ -6,6 +6,7 @@ export class DbAccess {
   public async connectWithConf() {
     return this.connect(
       envVariables.host,
+      envVariables.port,
       envVariables.user,
       envVariables.password,
       envVariables.database
@@ -15,6 +16,7 @@ export class DbAccess {
   /**
    * 接続
    * @param {string} host
+   * @param {number} port
    * @param {string} user
    * @param {string} password
    * @param {string} database
@@ -22,12 +24,14 @@ export class DbAccess {
    */
   public async connect(
     host: string,
+    port: number,
     user: string,
     password: string,
     database: string
   ) {
     this.client = new Client({
       host: host,
+      port: port,
       user: user,
       password: password,
       database: database,

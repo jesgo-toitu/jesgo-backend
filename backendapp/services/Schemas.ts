@@ -1,6 +1,5 @@
 import { ApiReturnObject, RESULT } from '../logic/ApiCommon';
 import { DbAccess } from '../logic/DbAccess';
-import { numArrayCast2Pg } from './JsonToDatabase';
 
 export interface getJsonSchemaBody {
   ids: number[] | undefined;
@@ -29,35 +28,42 @@ export type schemaRecord = {
   plugin_id: number;
 };
 
-export const getJsonSchema = async (
-  body: getJsonSchemaBody
-): Promise<ApiReturnObject> => {
+export const getJsonSchema = async (): Promise<ApiReturnObject> => {
+  console.log('getJsonSchema');
   try {
-    let query = '';
-    if (body.ids !== undefined) {
-      const ids: number[] = body.ids;
-      query = `SELECT * FROM jesgo_document_schema WHERE schema_id IN (${numArrayCast2Pg(
-        ids
-      )})`;
-    } else {
-      query = `select schema_id, document_schema->'jesgo:parentschema' from jesgo_document_schema where document_schema->>'jesgo:parentschema' like '%"/"%';`;
-    }
+    const query = `SELECT * FROM jesgo_document_schema`;
 
     const dbAccess = new DbAccess();
     await dbAccess.connectWithConf();
     const ret = (await dbAccess.query(query)) as schemaRecord[];
     await dbAccess.end();
 
-    const records: records = {};
-    for (let index = 0; index < ret.length; index++) {
-      const record = ret[index];
-      const strId = record.schema_id.toString();
-      records[strId] = record;
-    }
-    return { statusNum: RESULT.NORMAL_TERMINATION, body: records };
+    return { statusNum: RESULT.NORMAL_TERMINATION, body: ret };
   } catch (e) {
     console.log(e);
     return { statusNum: RESULT.ABNORMAL_TERMINATION, body: null };
+  }
+};
+
+export const getRootSchemaIds = async (): Promise<ApiReturnObject> => {
+  console.log('getRootSchemaIds');
+  try {
+    const query = `select * from jesgo_document_schema where document_schema->>'jesgo:parentschema' like '%"/"%';`;
+
+    const dbAccess = new DbAccess();
+    await dbAccess.connectWithConf();
+    const ret = (await dbAccess.query(query)) as schemaRecord[];
+    await dbAccess.end();
+
+    const ids: number[] = [];
+    for (let index = 0; index < ret.length; index++) {
+      const record = ret[index];
+      ids.push(record.schema_id);
+    }
+    return { statusNum: RESULT.NORMAL_TERMINATION, body: ids };
+  } catch (e) {
+    console.log(e);
+    return { statusNum: RESULT.ABNORMAL_TERMINATION, body: [] };
   }
 };
 
@@ -335,7 +341,7 @@ export const registrationCaseAndDocument = async (
       }
     }
     await dbAccess.query('COMMIT');
-    return { statusNum: RESULT.NORMAL_TERMINATION, body: null };
+    return { statusNum: RESULT.NORMAL_TERMINATION, body: caseId };
   } catch (e) {
     console.log('catch');
     console.log(e);

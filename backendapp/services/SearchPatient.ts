@@ -15,6 +15,11 @@ export interface dbRow {
   document_id: number;
   case_id: number;
   deleted: boolean;
+  chemotherapy_date: string;
+  operation_date: string;
+  radiotherapy_date: string;
+  date_of_death: string;
+  decline: boolean;
 }
 interface userData {
   caseId: number;
@@ -70,7 +75,7 @@ const addStatus = (
   spacer = ''
 ): string => {
   // 新規文字列が既に含まれていない
-  if (baseString.indexOf(addString) == -1) {
+  if (baseString !== null && baseString.indexOf(addString) == -1) {
     // 元となる文字列が空でない
     if (baseString != '') {
       return baseString + spacer + addString;
@@ -90,8 +95,12 @@ export const searchPatients = async (
   const dbRows: dbRow[] = (await dbAccess.query(
     `SELECT 
     HIS_id, name, DATE_PART('year', AGE(now(),date_of_birth)) as age, sch.schema_id_string as schemaidstring, 
-    doc.document->'properties'->>'診断日' as since, to_char(ca.last_updated, 'yyyy/mm/dd') as last_updated, 
-    doc.document->'properties'->>'FIGO' as figo, 
+    date_of_death, decline, 
+    doc.document->>'診断日' as since, to_char(ca.last_updated, 'yyyy/mm/dd') as last_updated, 
+    doc.document->>'FIGO' as figo, 
+    doc.document->>'投与開始日' as chemotherapy_date, 
+    doc.document->>'手術日' as operation_date, 
+    doc.document->>'治療開始日' as radiotherapy_date, 
     doc.child_documents, doc.document_id as document_id, ca.case_id as case_id, doc.deleted as deleted  
     FROM jesgo_document doc JOIN jesgo_document_schema sch ON doc.schema_id = sch.schema_id RIGHT OUTER JOIN jesgo_case ca ON ca.case_id = doc.case_id
     WHERE ca.deleted = false 
@@ -116,6 +125,15 @@ export const searchPatients = async (
     const caseId: number = dbRow.case_id;
     let rowIndex = caseIdList.indexOf(caseId);
     let userData: userData;
+
+    // 腫瘍登録対象のみ表示が有効の場合、そうでないレコードは飛ばす
+    if (query.showOnlyTumorRegistry && query.showOnlyTumorRegistry === 'true') {
+      // 「拒否」が有効の場合
+      if(dbRow.decline){
+        continue;
+      }
+    }
+
     // 該当レコードのcaseIdが既に記録されてるか確認
     if (rowIndex != -1) {
       // 存在している場合、userDataListの同じ添え字にアクセス
@@ -143,6 +161,12 @@ export const searchPatients = async (
         status: [],
       };
       rowIndex = userDataList.push(userData);
+
+      // caseの情報を取得するのは初回のみ
+      // 死亡日が設定されている場合死亡ステータスを追加
+      if(dbRow.date_of_death !== null){
+        userData.status.push('death');
+      }
     }
 
     // 削除されているドキュメントの場合、ステータス系の更新は行わない
@@ -190,25 +214,27 @@ export const searchPatients = async (
     ) {
       let iconTag = '';
 
-      if (dbRow.schemaidstring === '/schema/treatment/operation') {
+      if (dbRow.schemaidstring === '/schema/treatment/operation' && dbRow.operation_date !== null) {
         iconTag = 'surgery';
-      } else if (dbRow.schemaidstring === '/schema/treatment/chemotherapy') {
+      } else if (dbRow.schemaidstring === '/schema/treatment/chemotherapy' && dbRow.chemotherapy_date !== null) {
         iconTag = 'chemo';
-      } else if (dbRow.schemaidstring === '/schema/treatment/radiotherapy') {
+      } else if (dbRow.schemaidstring === '/schema/treatment/radiotherapy' && dbRow.radiotherapy_date !== null) {
         iconTag = 'radio';
       }
 
-      // 再発系の場合
-      if (recurrenceChildDocumentIds.includes(dbRow.document_id)) {
-        userData.postRelapseTreatment.push(iconTag);
-      }
-      // 初回治療の場合
-      else {
-        userData.initialTreatment.push(iconTag);
-      }
+      if(iconTag !== ''){
+        // 再発系の場合
+        if (recurrenceChildDocumentIds.includes(dbRow.document_id)) {
+          userData.postRelapseTreatment.push(iconTag);
+        }
+        // 初回治療の場合
+        else {
+          userData.initialTreatment.push(iconTag);
+        }
 
-      // どちらでもステータスに入れる
-      userData.status.push(iconTag);
+        // どちらでもステータスに入れる
+        userData.status.push(iconTag);
+      }
     }
 
     // 進行期

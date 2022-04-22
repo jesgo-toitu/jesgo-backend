@@ -1,6 +1,7 @@
 import { DbAccess } from '../logic/DbAccess';
 import { readFileSync, readdirSync, rename, existsSync, mkdirSync } from 'fs';
 import { ApiReturnObject, RESULT } from '../logic/ApiCommon';
+import lodash from 'lodash';
 
 //インターフェース
 
@@ -357,7 +358,8 @@ const fileListInsert = async (fileList: string[]) => {
 /**
  * DBに登録されているスキーマのsubschema, childschema情報をアップデートする
  */
-const schemaListUpdate = async () => {
+export const schemaListUpdate = async () => {
+  console.log('schemaListUpdate');
   type dbRow = {
     schema_id: number;
     schema_id_string: string;
@@ -370,7 +372,11 @@ const schemaListUpdate = async () => {
   const dbAccess = new DbAccess();
   await dbAccess.connectWithConf();
   const dbRows: dbRow[] = (await dbAccess.query(
-    "SELECT schema_id,schema_id_string,document_schema->'jesgo:subschema' as sub_s,document_schema->'jesgo:childschema' as child_s FROM jesgo_document_schema"
+    `SELECT schema_id, 
+    schema_id_string, 
+    document_schema->'jesgo:subschema' as sub_s, 
+    document_schema->'jesgo:childschema' as child_s 
+    FROM jesgo_document_schema`
   )) as dbRow[];
 
   for (let i = 0; i < dbRows.length; i++) {
@@ -399,15 +405,28 @@ const schemaListUpdate = async () => {
         }
       }
     }
+    console.log('schemaListUpdate2');
+    if (row.schema_id_string !== null) {
+      console.log('schemaListUpdate3');
+      const schemaIds: schemaId[] = (await dbAccess.query(
+        `SELECT schema_id FROM jesgo_document_schema WHERE document_schema->>'jesgo:parentschema' like '%"${row.schema_id_string}"%'`,
+        []
+      )) as schemaId[];
+      for (let l = 0; l < schemaIds.length; l++) {
+        childSchemaList.push(schemaIds[l].schema_id);
+      }
+    }
 
-    console.log('tes');
     console.log(subSchemaList);
     console.log(childSchemaList);
+
+    // eslint-disable-next-line
+    const newChildSchemaList = lodash.uniq(childSchemaList) as number[];
     await dbAccess.query(
       `UPDATE jesgo_document_schema SET subschema = '{${numArrayCast2Pg(
         subSchemaList
       )}}', child_schema = '{${numArrayCast2Pg(
-        childSchemaList
+        newChildSchemaList
       )}}' WHERE schema_id = $1`,
       [row.schema_id]
     );

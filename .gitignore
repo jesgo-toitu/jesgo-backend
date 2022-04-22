@@ -112,3 +112,4 @@ dist
 
 # スキーマファイル
 backendapp/import/*
+backendapp/imported/*

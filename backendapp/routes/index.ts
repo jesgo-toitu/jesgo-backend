@@ -7,18 +7,24 @@ import {
   checkAuth,
   roll,
   refleshLogin,
+  searchUser,
+  searchUserRequest,
+  signUpUser,
+  editUserProfile,
+  deleteUser,
+  changePassword,
 } from '../services/Users';
 import {
   deletePatient,
   searchPatientRequest,
   searchPatients,
 } from '../services/SearchPatient';
-import { jsonToSchema } from '../services/JsonToDatabase';
+import { jsonToSchema, schemaListUpdate } from '../services/JsonToDatabase';
 import Router from 'express-promise-router';
 import {
   getCaseAndDocument,
   getJsonSchema,
-  getJsonSchemaBody,
+  getRootSchemaIds,
   registrationCaseAndDocument,
   SaveDataObjDefine,
 } from '../services/Schemas';
@@ -53,6 +59,150 @@ router.post('/relogin/', (req, res, next) => {
     res.status(200).send(result);
   } catch {
     next;
+  }
+});
+
+router.get('/getJsonSchema', async (req, res, next) => {
+  // 権限の確認
+  const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.view);
+  if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
+    res.status(200).send(authResult);
+  }
+  if (authResult.body) {
+    getJsonSchema()
+      .then((result) => res.status(200).send(result))
+      .catch(next);
+  }
+  // 権限が無い場合
+  else {
+    console.log('auth error');
+  }
+});
+
+router.get('/getRootSchemaIds', async (req, res, next) => {
+  // 権限の確認
+  const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.view);
+  if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
+    res.status(200).send(authResult);
+  }
+  if (authResult.body) {
+    getRootSchemaIds()
+      .then((result) => res.status(200).send(result))
+      .catch(next);
+  }
+  // 権限が無い場合
+  else {
+    console.log('auth error');
+  }
+});
+/**
+ * ユーザー一覧
+ */
+ router.get('/userlist', async (req, res, next) => {
+  // 権限の確認
+  const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.view);
+  if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
+    res.status(200).send(authResult);
+  } else {
+    if (authResult.body) {
+      searchUser(req.query as searchUserRequest)
+        .then((result) => res.status(200).send(result))
+        .catch(next);
+    }
+    // 権限が無い場合
+    else {
+      console.log('auth error');
+    }
+  }
+});
+
+/**
+ * ユーザー登録
+ */
+ router.post('/signup/', async (req, res, next) => {
+  const body: userObject = req.body.data as userObject;
+
+  // 権限の確認
+  const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.view);
+  if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
+    res.status(200).send(authResult);
+  }
+  else {
+    const body: userObject = req.body.data as userObject;
+    console.log("signup:");
+    console.log(req.body.data);
+    signUpUser(body.name, body.display_name, body.password, body.roll_id)
+      .then((result) => res.status(200).send(result))
+      .catch(next);
+    }
+});
+
+/**
+ * ユーザー削除
+ */
+ router.post('/deleteUser/', async (req, res, next) => {
+  const body: userObject = req.body.data as userObject;
+   console.log("deleteUser:" + body);
+
+  // 権限の確認
+  const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.view);
+  if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
+    res.status(200).send(authResult);
+  }
+  else {
+    const body: userObject = req.body.data as userObject;
+    deleteUser(body.user_id)
+      .then((result) => res.status(200).send(result))
+      .catch(next);
+    }
+});
+
+/**
+ * ユーザーパスワード変更
+ */
+ router.post('/changeUserPassword/', async (req, res, next) => {
+  const body: userObject = req.body.data as userObject;
+
+  // 権限の確認
+  const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.view);
+  if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
+    res.status(200).send(authResult);
+  }
+  else {
+    const body: userObject = req.body.data as userObject;
+    changePassword(
+      body.user_id,
+      body.password
+    )
+    .then((result) => res.status(200).send(result))
+    .catch(next);
+  }
+});
+
+/**
+ * ユーザー更新
+ */
+router.post('/editUser/', async (req, res, next) => {
+  const body: userObject = req.body.data as userObject;
+
+  // 権限の確認
+  const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.view);
+  if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
+    res.status(200).send(authResult);
+  }
+  else {
+    const body: userObject = req.body.data as userObject;
+    console.log("editUser");
+    console.log(req.body.data);
+    editUserProfile(
+      body.user_id,
+      body.name,
+      body.display_name,
+      body.password,
+      body.roll_id
+    )
+    .then((result) => res.status(200).send(result))
+    .catch(next);
   }
 });
 
@@ -113,24 +263,6 @@ router.delete('/deleteCase/:caseId', async (req, res, next) => {
  * deleteCase
  */
 
-router.post('/getJsonSchema', async (req, res, next) => {
-  // 権限の確認
-  const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.view);
-  if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
-    res.status(200).send(authResult);
-  }
-  if (authResult.body) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    getJsonSchema(req.body.data as getJsonSchemaBody)
-      .then((result) => res.status(200).send(result))
-      .catch(next);
-  }
-  // 権限が無い場合
-  else {
-    console.log('auth error');
-  }
-});
-
 router.post('/registrationCaseAndDocument/', async (req, res, next) => {
   // 権限の確認
   const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.add);
@@ -179,39 +311,18 @@ router.post('/json2schema/', (req, res, next) => {
     .catch(next);
 });
 
+router.post('/schemaListUpdate/', (req, res, next) => {
+  schemaListUpdate()
+    .then((result) => res.status(200).send(result))
+    .catch(next);
+});
 /**
  * プラグイン用 end
  */
 
 /*
-router.post('/signup/', async (req, res, next) => {
-  const body: userObject = req.body as userObject;
-  let user_id = -1;
-  if (req.header('token') != null) {
-    console.log('token ready');
-    const token: Jwt = { token: req.header('token') as string };
-    const userInfo: dispUser = decordJwt(token) as dispUser;
-    user_id = userInfo.user_id;
-  }
-  // トークンがない場合
-  else {
-    console.log('token not ready');
-  }
-
-  const result: boolean = await checkAuth(user_id, roll.systemManage);
-  if (result) {
-    signUpUser(body.name, body.display_name, body.password, body.roll_id)
-      .then((result) => res.status(200).send(result))
-      .catch(next);
-  }
-  // 権限が無い場合
-  else {
-    console.log('auth error');
-  }
-});
-
 router.post('/edituserprofile/', async (req, res, next) => {
-  const body: userObject = req.body as userObject;
+  const body: userObject = req.body.data as userObject;
   let user_id = -1;
   if (req.header('token') != null) {
     console.log('token ready');
@@ -268,7 +379,7 @@ router.get('/search/', async (req, res, next) => {
 });
 
 router.post('/editmyprofile/', (req, res, next) => {
-  const body: userObject = req.body as userObject;
+  const body: userObject = req.body.data as userObject;
   let user_id = -1;
   if (req.header('token') != null) {
     console.log('token ready');
@@ -295,6 +406,10 @@ router.post('/editmyprofile/', (req, res, next) => {
   }
 });
 */
+
+
+
+
 
 // -------------------------------------------------
 //  以下、何のルーティングにもマッチしないorエラー

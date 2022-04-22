@@ -29,6 +29,7 @@ name text UNIQUE NOT NULL,
 display_name text,
 password_hash text,
 roll_id integer NOT NULL,
+deleted boolean DEFAULT FALSE,
 FOREIGN KEY(roll_id) REFERENCES jesgo_user_roll(roll_id)
 );
 
