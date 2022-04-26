@@ -106,6 +106,7 @@ export const searchPatients = async (
     WHERE ca.deleted = false 
     ORDER BY ca.case_id , sch.schema_id_string;`
   )) as dbRow[];
+  await dbAccess.end();
 
   let recurrenceChildDocumentIds: number[] = [];
 
