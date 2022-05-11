@@ -68,6 +68,7 @@ version_major integer NOT NULL,
 version_minor integer NOT NULL,
 plugin_id integer,
 inherit_schema integer[],
+base_schema integer DEFAULT NULL,
 PRIMARY KEY(schema_id, valid_from)
 -- TODO★設定テーブル未作成
 -- FOREIGN KEY(plugin_id) REFERENCES jesgo_setting(plugin_id)

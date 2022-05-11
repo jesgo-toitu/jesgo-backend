@@ -476,10 +476,7 @@ export const schemaListUpdate = async () => {
  * @param roll_id ロール種別
  * @returns TRUEorFALSE(新規登録の成否)
  */
-export const jsonToSchema = () => {
-  return new Promise<ApiReturnObject>((solve) => {
-    console.log('json2schema');
-
+export const jsonToSchema = async ():Promise<ApiReturnObject> => {
     const dirPath = './backendapp/import';
 
     const listFiles = (dir: string): string[] =>
@@ -492,17 +489,9 @@ export const jsonToSchema = () => {
     let fileList: string[] = [];
     fileList = listFiles(dirPath);
 
-    // 逐次的に同期処理したいのでforで書く(mapだと非同期になる)
-    // eslint-disable-next-line @typescript-eslint/no-floating-promises
-    (async () => {
-      await fileListInsert(fileList);
-    })
-      .call(null)
-      .then();
+    await fileListInsert(fileList);
 
-    // eslint-disable-next-line @typescript-eslint/no-floating-promises
-    schemaListUpdate();
+    await schemaListUpdate();
 
-    solve({ statusNum: RESULT.NORMAL_TERMINATION, body: null });
-  });
+    return { statusNum: RESULT.NORMAL_TERMINATION, body: null };
 };
