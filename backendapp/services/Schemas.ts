@@ -19,6 +19,8 @@ export type schemaRecord = {
   hidden: boolean;
   subschema: number[];
   child_schema: number[];
+  inherit_schema: number[];
+  base_schema: number|null;
   base_version_major: number;
   valid_from: Date;
   valid_until: Date;
@@ -76,6 +78,7 @@ type jesgoDocumentFromDb = {
   document: any;
   child_documents: string[];
   schema_id: number;
+  inherit_schema: number[];
   schema_major_version: number;
   registrant: number;
   last_updated: string;
@@ -106,6 +109,7 @@ export type jesgoDocumentValueItem = {
   document: any;
   child_documents: string[];
   schema_id: number;
+  inherit_schema: number[];
   schema_major_version: number;
   registrant: number;
   last_updated: string;
@@ -278,8 +282,9 @@ export const registrationCaseAndDocument = async (
               last_updated, 
               readonly, 
               deleted, 
-              root_order
-              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+              root_order, 
+              inherit_schema 
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
               [
                 caseId,
                 str2Date(jesgoDocumentCover.value.event_date),
@@ -292,6 +297,7 @@ export const registrationCaseAndDocument = async (
                 jesgoDocumentCover.value.readonly,
                 jesgoDocumentCover.value.deleted,
                 jesgoDocumentCover.root_order,
+                jesgoDocumentCover.value.inherit_schema,
               ]
             );
 
@@ -314,8 +320,9 @@ export const registrationCaseAndDocument = async (
               last_updated = $8, 
               readonly = $9, 
               deleted = $10, 
-              root_order = $11 
-              WHERE document_id = $12`,
+              root_order = $11,
+              inherit_schema = $12 
+              WHERE document_id = $13`,
               [
                 caseId,
                 str2Date(jesgoDocumentCover.value.event_date),
@@ -328,6 +335,7 @@ export const registrationCaseAndDocument = async (
                 jesgoDocumentCover.value.readonly,
                 jesgoDocumentCover.value.deleted,
                 jesgoDocumentCover.root_order,
+                jesgoDocumentCover.value.inherit_schema,
                 Number(jesgoDocumentCover.key),
               ]
             );
@@ -387,6 +395,7 @@ export const getCaseAndDocument = async (
           document: doc.document,
           child_documents: doc.child_documents,
           schema_id: doc.schema_id,
+          inherit_schema: doc.inherit_schema, 
           schema_major_version: doc.schema_major_version,
           registrant: doc.registrant,
           last_updated: doc.last_updated,

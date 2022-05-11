@@ -9,8 +9,8 @@ app.use(helmet());
 app.use(cors());
 
 //body-parserの設定
-app.use(bodyParser.urlencoded({ extended: true }));
-app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true,  limit: '30mb' }));
+app.use(bodyParser.json({ limit: '30mb' }));
 
 const port = process.env.PORT || 3000; // port番号を指定
 

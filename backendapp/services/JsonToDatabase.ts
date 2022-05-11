@@ -214,6 +214,17 @@ export const numArrayCast2Pg = (numArray: number[]): string => {
   return numStr;
 };
 
+/** 
+ * undefinedで入ってくるかもしれない数値を検出し、テキスト形式に直す
+ * undefinedの場合は"NULL"で返す
+*/
+export const undefined2Null = (num: number|undefined): string => {
+  if(num === null || num === undefined){
+    return 'NULL';
+  }
+  return num.toString();
+};
+
 /**
  * 既に存在するschema_string_idかを確認
  * @param stringId 確認対象のschema_string_id
@@ -359,7 +370,6 @@ const fileListInsert = async (fileList: string[]) => {
  * DBに登録されているスキーマのsubschema, childschema情報をアップデートする
  */
 export const schemaListUpdate = async () => {
-  console.log('schemaListUpdate');
   type dbRow = {
     schema_id: number;
     schema_id_string: string;
@@ -378,11 +388,14 @@ export const schemaListUpdate = async () => {
     document_schema->'jesgo:childschema' as child_s 
     FROM jesgo_document_schema`
   )) as dbRow[];
-
+  
+  const candidateBaseSchemas = dbRows.slice(0);
   for (let i = 0; i < dbRows.length; i++) {
     const row: dbRow = dbRows[i];
     const subSchemaList: number[] = [];
     const childSchemaList: number[] = [];
+    const inheritSchemaList: number[] = [];
+    let baseSchemaId:number|undefined;
     if (row.sub_s != null) {
       for (let j = 0; j < row.sub_s.length; j++) {
         const schemaIds: schemaId[] = (await dbAccess.query(
@@ -400,26 +413,41 @@ export const schemaListUpdate = async () => {
           'SELECT schema_id FROM jesgo_document_schema WHERE schema_id_string = $1',
           [row.child_s[k]]
         )) as schemaId[];
-        if (schemaIds.length > 0) {
+        if (schemaIds.length > 0 && subSchemaList.includes(schemaIds[0].schema_id) === false) {
           childSchemaList.push(schemaIds[0].schema_id);
         }
       }
     }
-    console.log('schemaListUpdate2');
     if (row.schema_id_string !== null) {
-      console.log('schemaListUpdate3');
+      // 自身を親に持つスキーマを子スキーマに追加
       const schemaIds: schemaId[] = (await dbAccess.query(
         `SELECT schema_id FROM jesgo_document_schema WHERE document_schema->>'jesgo:parentschema' like '%"${row.schema_id_string}"%'`,
         []
       )) as schemaId[];
       for (let l = 0; l < schemaIds.length; l++) {
-        childSchemaList.push(schemaIds[l].schema_id);
+        if(subSchemaList.includes(schemaIds[l].schema_id) === false){
+          childSchemaList.push(schemaIds[l].schema_id);
+        }
       }
+
+      // 自身より下層のschema_id_stringを持つスキーマを継承スキーマに追加
+      const inheritSchemaIds: schemaId[] = (await dbAccess.query(
+        `SELECT schema_id FROM jesgo_document_schema WHERE schema_id_string like '${row.schema_id_string}/%'`,
+        []
+      )) as schemaId[];
+      for (let m = 0; m < inheritSchemaIds.length; m++) {
+        inheritSchemaList.push(inheritSchemaIds[m].schema_id);
+      }
+
+      // 自身の基底スキーマを探す
+      const baseSchema = candidateBaseSchemas
+      // 文字列の短い順(よりパスの短い順)に整列
+      .sort((a,b) => a.schema_id_string.length - b.schema_id_string.length)
+      .find(schema => row.schema_id_string.startsWith(`${schema.schema_id_string}/`));
+      baseSchemaId = baseSchema?.schema_id;
     }
 
-    console.log(subSchemaList);
-    console.log(childSchemaList);
-
+    // 子スキーマのリストから重複を削除
     // eslint-disable-next-line
     const newChildSchemaList = lodash.uniq(childSchemaList) as number[];
     await dbAccess.query(
@@ -427,7 +455,11 @@ export const schemaListUpdate = async () => {
         subSchemaList
       )}}', child_schema = '{${numArrayCast2Pg(
         newChildSchemaList
-      )}}' WHERE schema_id = $1`,
+      )}}', inherit_schema = '{${numArrayCast2Pg(
+        inheritSchemaList
+      )}}', base_schema = ${undefined2Null(
+        baseSchemaId
+      )} WHERE schema_id = $1`,
       [row.schema_id]
     );
   }
