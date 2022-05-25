@@ -7,6 +7,7 @@ export interface dbRow {
   his_id: string;
   name: string;
   age: number;
+  death_age: number;
   schemaidstring: string;
   since: string;
   last_updated: string;
@@ -18,7 +19,10 @@ export interface dbRow {
   chemotherapy_date: string;
   operation_date: string;
   radiotherapy_date: string;
+  evaluation_date: string;
+  cancer_type: string;
   date_of_death: string;
+  registration: string;
   decline: boolean;
 }
 interface userData {
@@ -27,15 +31,23 @@ interface userData {
   patientName: string;
   age: number;
   registedCancerGroup: string;
+  since: string | null;
   startDate: string | null;
   lastUpdate: string;
   diagnosis: string;
+  diagnosisCervical: string;
+  diagnosisEndometrial: string;
+  diagnosisOvarian: string;
   advancedStage: string;
+  advancedStageCervical: string;
+  advancedStageEndometrial: string;
+  advancedStageOvarian: string;
   pathlogicalDiagnosis: string;
   initialTreatment: string[];
   copilacations: string[];
   progress: string[];
   postRelapseTreatment: string[];
+  registration: string[];
   threeYearPrognosis: string[];
   fiveYearPrognosis: string[];
   status: string[];
@@ -94,13 +106,18 @@ export const searchPatients = async (
   await dbAccess.connectWithConf();
   const dbRows: dbRow[] = (await dbAccess.query(
     `SELECT 
-    HIS_id, name, DATE_PART('year', AGE(now(),date_of_birth)) as age, sch.schema_id_string as schemaidstring, 
+    HIS_id, name, DATE_PART('year', AGE(now(),date_of_birth)) as age, 
+    DATE_PART('year', AGE(date_of_death, date_of_birth)) as death_age, 
+    sch.schema_id_string as schemaidstring, 
     date_of_death, decline, 
     doc.document->>'診断日' as since, to_char(ca.last_updated, 'yyyy/mm/dd') as last_updated, 
     doc.document->>'FIGO' as figo, 
     doc.document->>'投与開始日' as chemotherapy_date, 
     doc.document->>'手術日' as operation_date, 
     doc.document->>'治療開始日' as radiotherapy_date, 
+    doc.document->>'腫瘍登録番号' as registration, 
+    doc.document->>'がん種' as cancer_type, 
+    doc.document->>'評価日' as evaluation_date, 
     doc.child_documents, doc.document_id as document_id, ca.case_id as case_id, doc.deleted as deleted  
     FROM jesgo_document doc JOIN jesgo_document_schema sch ON doc.schema_id = sch.schema_id RIGHT OUTER JOIN jesgo_case ca ON ca.case_id = doc.case_id
     WHERE ca.deleted = false 
@@ -146,17 +163,25 @@ export const searchPatients = async (
         caseId: caseId,
         patientId: dbRow.his_id,
         patientName: dbRow.name,
-        age: dbRow.age,
+        age: dbRow.date_of_death !== null ? dbRow.death_age: dbRow.age,
         registedCancerGroup: '',
+        since: null,
         startDate: null,
         lastUpdate: dbRow.last_updated,
         diagnosis: '',
+        diagnosisCervical: '無',
+        diagnosisEndometrial: '無',
+        diagnosisOvarian: '無',
         advancedStage: '',
+        advancedStageCervical: '',
+        advancedStageEndometrial: '',
+        advancedStageOvarian: '',
         pathlogicalDiagnosis: '',
         initialTreatment: [],
         copilacations: [],
         progress: [],
         postRelapseTreatment: [],
+        registration: [],
         threeYearPrognosis: [],
         fiveYearPrognosis: [],
         status: [],
@@ -179,21 +204,30 @@ export const searchPatients = async (
     if (
       dbRow.schemaidstring === '/schema/EM/root' ||
       dbRow.schemaidstring === '/schema/CC/root' ||
-      dbRow.schemaidstring === '/schema/OV/root'
+      dbRow.schemaidstring === '/schema/OV/root' ||
+      dbRow.schemaidstring === '/schema/other/root'
     ) {
       let cancerType = '';
 
       if (dbRow.schemaidstring === '/schema/EM/root') {
         cancerType = '子宮体がん';
+        userData.diagnosisEndometrial = '有';
       }
 
       if (dbRow.schemaidstring === '/schema/CC/root') {
         cancerType = '子宮頸がん';
+        userData.diagnosisCervical = '有';
       }
 
       if (dbRow.schemaidstring === '/schema/OV/root') {
         cancerType = '卵巣がん';
+        userData.diagnosisOvarian = '有';
       }
+
+      if (dbRow.schemaidstring === '/schema/other/root') {
+        cancerType = dbRow.cancer_type;
+      }
+
       userData.registedCancerGroup = addStatus(
         userData.registedCancerGroup,
         cancerType,
@@ -202,25 +236,40 @@ export const searchPatients = async (
       userData.diagnosis = addStatus(userData.diagnosis, cancerType, '･');
 
       // 診断日がもともと記録されていないか、もっと古いものであれば書き換える
-      if (userData.startDate == null || userData.startDate > dbRow.since) {
-        userData.startDate = dbRow.since;
+      if (userData.since == null || userData.since > dbRow.since) {
+        userData.since = dbRow.since;
       }
     }
 
     // 治療法系
     if (
       dbRow.schemaidstring === '/schema/treatment/operation' ||
+      dbRow.schemaidstring === '/schema/treatment/operation/detailed' ||
       dbRow.schemaidstring === '/schema/treatment/chemotherapy' ||
-      dbRow.schemaidstring === '/schema/treatment/radiotherapy'
+      dbRow.schemaidstring === '/schema/treatment/radiotherapy' ||
+      dbRow.schemaidstring === '/schema/treatment/supportive_care'
     ) {
       let iconTag = '';
+      let startDate = '';
 
-      if (dbRow.schemaidstring === '/schema/treatment/operation' && dbRow.operation_date !== null) {
+      if ((dbRow.schemaidstring === '/schema/treatment/operation' || 
+           dbRow.schemaidstring === '/schema/treatment/operation/detailed') && dbRow.operation_date !== null) {
         iconTag = 'surgery';
+        startDate = dbRow.operation_date;
       } else if (dbRow.schemaidstring === '/schema/treatment/chemotherapy' && dbRow.chemotherapy_date !== null) {
         iconTag = 'chemo';
+        startDate = dbRow.chemotherapy_date;
       } else if (dbRow.schemaidstring === '/schema/treatment/radiotherapy' && dbRow.radiotherapy_date !== null) {
         iconTag = 'radio';
+        startDate = dbRow.radiotherapy_date;
+      } else if (dbRow.schemaidstring === '/schema/treatment/supportive_care' && dbRow.evaluation_date !== null){
+        iconTag = "surveillance"
+        startDate = dbRow.evaluation_date;
+      }
+
+      // 初回治療日がもともと記録されていないか、もっと古いものであれば書き換える
+      if (userData.startDate == null || userData.startDate > startDate) {
+        userData.startDate = startDate;
       }
 
       if(iconTag !== ''){
@@ -239,8 +288,21 @@ export const searchPatients = async (
     }
 
     // 進行期
-    if (dbRow.schemaidstring === '/schema/CC/staging') {
-      userData.advancedStage = addStatus(userData.advancedStage, dbRow.figo);
+    if (dbRow.schemaidstring === '/schema/EM/staging' ||
+    dbRow.schemaidstring === '/schema/CC/staging' ||
+    dbRow.schemaidstring === '/schema/OV/staging' ) {
+      if (dbRow.schemaidstring === '/schema/EM/staging') {
+        userData.advancedStageEndometrial = dbRow.figo;
+      }
+
+      if (dbRow.schemaidstring === '/schema/CC/staging') {
+        userData.advancedStageCervical = dbRow.figo;
+      }
+
+      if (dbRow.schemaidstring === '/schema/OV/staging') {
+        userData.advancedStageOvarian = dbRow.figo;
+      }
+      userData.advancedStage = addStatus(userData.advancedStage, dbRow.figo, '・');
     }
 
     // 再発
@@ -252,13 +314,36 @@ export const searchPatients = async (
     // 経過
     if (dbRow.schemaidstring === '/schema/surveillance') {
       userData.progress.push('surveillance');
-      userData.status.push('surveillance');
+      // userData.status.push('surveillance');
     }
 
     // 合併症
     if (dbRow.schemaidstring === '/schema/treatment/operation_adverse_events') {
-      userData.copilacations.push('complications');
-      userData.status.push('complications');
+      // userData.copilacations.push('complications');
+      // userData.status.push('complications');
+    }
+
+    // 腫瘍登録番号登録有無
+    if (userData.registration.length === 0) {
+      if (dbRow.decline){
+        userData.registration.push('decline')
+      } else if (dbRow.registration !== null && dbRow.registration !== ''){
+        userData.registration.push('completed')
+      }
+    }
+  }
+
+  // 未入力埋め
+  for (let index = 0; index < userDataList.length; index++) {
+    const userData = userDataList[index];
+    if (userData.advancedStage === '') {
+      userData.advancedStage = ('未');
+    }
+    if (userData.diagnosis === '') {
+      userData.diagnosis = ('未');
+    }
+    if (userData.registration.length === 0) {
+      userData.registration.push('not_completed');
     }
   }
 
@@ -266,13 +351,13 @@ export const searchPatients = async (
   if (query.registrationYear && query.registrationYear != 'all') {
     for (let index = 0; index < userDataList.length; index++) {
       const userData = userDataList[index];
-      if (userData.startDate == null) {
+      if (userData.since == null) {
         userDataList.splice(index, 1);
         index--;
         continue;
       } else {
-        const startDate: Date = new Date(userData.startDate);
-        if (startDate.getFullYear().toString() !== query.registrationYear) {
+        const since: Date = new Date(userData.since);
+        if (since.getFullYear().toString() !== query.registrationYear) {
           userDataList.splice(index, 1);
           index--;
           continue;

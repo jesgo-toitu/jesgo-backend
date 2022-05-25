@@ -28,6 +28,11 @@ import {
   registrationCaseAndDocument,
   SaveDataObjDefine,
 } from '../services/Schemas';
+import {
+  getSettings,
+  settings,
+  updateSettings,
+} from '../services/Settings'
 import { ApiReturnObject, getToken, RESULT } from '../logic/ApiCommon';
 
 const app = express();
@@ -300,6 +305,37 @@ router.get('/getCaseAndDocument/:caseId', async (req, res, next) => {
 
 /**
  * 症例登録画面用 end
+ */
+
+/**
+ * システム設定用 start
+ */
+ router.get('/getSettings/', async (req, res, next) => {
+  // ログイン画面でも使用するので権限を設定しない
+  await getSettings()
+  .then((result) => res.status(200).send(result))
+  .catch(next);
+});
+
+router.post('/updateSettings/', async (req, res, next) => {
+  // 権限の確認
+  const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.systemManage);
+  if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
+    res.status(200).send(authResult);
+  }
+  if (authResult.body) {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    updateSettings(req.body.data as settings)
+    .then((result) => res.status(200).send(result))
+    .catch(next);
+  }
+  // 権限が無い場合
+  else {
+    console.log('auth error');
+  }
+});
+/**
+ * システム設定用 end
  */
 
 /**

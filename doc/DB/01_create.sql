@@ -111,3 +111,9 @@ body text,
 created timestamptz NOT NULL,
 FOREIGN KEY(user_id) REFERENCES jesgo_user(user_id)
 );
+
+CREATE TABLE IF NOT EXISTS jesgo_system_setting
+(
+setting_id integer PRIMARY KEY,
+value JSONB NOT NULL
+);

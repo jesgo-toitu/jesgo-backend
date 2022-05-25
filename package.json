@@ -1,4 +1,10 @@
 {
+    "name": "jsego-server",
+    "version": "0.0.8",
+    "keywords": [],
+    "author": "",
+    "license": "ISC",
+    "description": "",
     "jest": {
         "moduleFileExtensions": [
             "ts",

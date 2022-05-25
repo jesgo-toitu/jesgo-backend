@@ -194,6 +194,8 @@ export interface JSONSchema7 {
   'jesgo:author'?: string | undefined;
 }
 
+const dbAccess = new DbAccess();
+
 /**
  * Postgresクエリ用に数値の配列を文字列でカンマ区切りにして返す
  * @param numArray
@@ -226,6 +228,24 @@ export const undefined2Null = (num: number|undefined): string => {
 };
 
 /**
+ * 基底スキーマと継承スキーマのIDを入力に、スキーマ同士の関係にエラーがないかを確認する
+ * @param id1 継承スキーマのID
+ * @param id2 基底スキーマのID
+ * @returns エラーがある場合はtrueを返す
+ */
+export const hasInheritError = async (id1:number, id2:number): Promise<boolean> => {
+  const results = await dbAccess.query(
+    `SELECT uniqueness FROM jesgo_document_schema WHERE schema_id IN (${id1}, ${id2})`
+    ) as {uniqueness:boolean}[];
+    console.log(results)
+  if(results[0].uniqueness === results[1].uniqueness){
+    // 継承先と基底の間でjesgo:uniqueの値が一緒であればエラー無しを返す
+    return false;
+  }
+  return true;
+}
+
+/**
  * 既に存在するschema_string_idかを確認
  * @param stringId 確認対象のschema_string_id
  * @returns 存在する場合、そのschema_idを、存在しない場合は-1を返す
@@ -234,11 +254,8 @@ const checkStringId = async (stringId: string): Promise<number> => {
   console.log('既に存在するschema_string_idかを確認');
   const query = `SELECT schema_id FROM jesgo_document_schema WHERE schema_id_string = '${stringId}'`;
   console.log(query);
-  const dbAccess = new DbAccess();
-  await dbAccess.connectWithConf();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const ret: any[] = (await dbAccess.query(query)) as any[];
-  await dbAccess.end();
   if (ret.length > 0) {
     // 既に存在するschema_string_id
     // eslint-disable-next-line @typescript-eslint/no-unsafe-argument,@typescript-eslint/no-unsafe-member-access
@@ -258,14 +275,11 @@ const checkStringId = async (stringId: string): Promise<number> => {
 const getInsertId = async (stringId: string): Promise<number> => {
   let insertId: number = await checkStringId(stringId);
   if (insertId == -1) {
-    const dbAccess = new DbAccess();
-    await dbAccess.connectWithConf();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const ret: any[] = (await dbAccess.query(
       `select max(schema_id) from jesgo_document_schema`
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     )) as any[];
-    await dbAccess.end();
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     insertId = (ret[0].max as number) + 1; //
   }
@@ -358,11 +372,8 @@ const fileListInsert = async (fileList: string[]) => {
     // Insert用IDの取得
     const insertId = await getInsertId(json.$id as string);
 
-    const dbAccess = new DbAccess();
-    await dbAccess.connectWithConf();
     await dbAccess.query(makeInsertQuery(insertId, json));
-    await dbAccess.end();
-    moveFile(fileList[i]);
+    // moveFile(fileList[i]);
   }
 };
 
@@ -379,8 +390,6 @@ export const schemaListUpdate = async () => {
   type schemaId = { schema_id: number };
 
   // selectでDBに保存されている各スキーマのschema_id,schema_string_id,subschema,childschema一覧を取得
-  const dbAccess = new DbAccess();
-  await dbAccess.connectWithConf();
   const dbRows: dbRow[] = (await dbAccess.query(
     `SELECT schema_id, 
     schema_id_string, 
@@ -445,6 +454,14 @@ export const schemaListUpdate = async () => {
       .sort((a,b) => a.schema_id_string.length - b.schema_id_string.length)
       .find(schema => row.schema_id_string.startsWith(`${schema.schema_id_string}/`));
       baseSchemaId = baseSchema?.schema_id;
+
+      if(baseSchema){
+        // 基底スキーマと継承スキーマの間でuniqueの設定値が異なる場合、エラーを出してロールバックする
+        if(await hasInheritError(row.schema_id, baseSchema.schema_id)){
+          console.log(`継承スキーマ(id=${row.schema_id_string})、基底スキーマ(id=${baseSchema.schema_id_string})の間でunique設定が異なります`);
+          throw Error;
+        }
+      }
     }
 
     // 子スキーマのリストから重複を削除
@@ -463,19 +480,8 @@ export const schemaListUpdate = async () => {
       [row.schema_id]
     );
   }
-  await dbAccess.end();
 };
 
-/**
- * ユーザの新規登録
- * 権限：管理者
- * 必要情報を入力し、ユーザを新規登録する
- * @param name ログイン名
- * @param display_name 表示名
- * @param password パスワード(平文)
- * @param roll_id ロール種別
- * @returns TRUEorFALSE(新規登録の成否)
- */
 export const jsonToSchema = async ():Promise<ApiReturnObject> => {
     const dirPath = './backendapp/import';
 
@@ -488,10 +494,26 @@ export const jsonToSchema = async ():Promise<ApiReturnObject> => {
 
     let fileList: string[] = [];
     fileList = listFiles(dirPath);
+    try{
+      console.log('db connect')
+      await dbAccess.connectWithConf();
+      await dbAccess.query('BEGIN')
 
-    await fileListInsert(fileList);
+      await fileListInsert(fileList);
 
-    await schemaListUpdate();
+      await schemaListUpdate();
 
-    return { statusNum: RESULT.NORMAL_TERMINATION, body: null };
+      await dbAccess.query('COMMIT');
+      return { statusNum: RESULT.NORMAL_TERMINATION, body: null };
+    } catch(e){
+      console.error(e);
+      await dbAccess.query('ROLLBACK');
+      return { statusNum: RESULT.ABNORMAL_TERMINATION, body: null };
+    }finally{
+      console.log('db close')
+      await dbAccess.end();
+    }
+
+
+
 };
