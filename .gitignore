@@ -113,6 +113,7 @@ dist
 # スキーマファイル
 backendapp/import/*
 backendapp/imported/*
+uploads/*
 
 # ログファイル
 log/*
