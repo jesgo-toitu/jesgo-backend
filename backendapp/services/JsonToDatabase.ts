@@ -798,15 +798,21 @@ export const uploadZipFile = async (data:any):Promise<ApiReturnObject> => {
   const dirPath = './tmp';
   // eslint-disable-next-line
   const filePath:string = data.path;
-  let fileType:string = path.extname(filePath).toLocaleLowerCase()
+  let fileType:string = path.extname(data.originalname).toLowerCase();
   // eslint-disable-next-line
   try{
     switch (fileType) {
       case '.zip':
-        fs.createReadStream(filePath).pipe( Extract( { path: path.join(dirPath, path.sep) } ) );
+        fs.createReadStream(filePath).pipe( Extract( { path: dirPath } ) );
         break;
       case '.json':
-        fs.copyFileSync(filePath, path.join(dirPath, path.basename(filePath)))
+        if (!fs.existsSync(dirPath)) {
+          fs.mkdirSync(dirPath);
+        }
+        fs.copyFileSync(filePath, path.join(dirPath, 'uploaded.json'));
+        break;
+      default:
+        throw new Error('.zipファイルか.jsonファイルを指定してください.');
     }
     
     await sleep(500);
@@ -848,7 +854,7 @@ export const uploadZipFile = async (data:any):Promise<ApiReturnObject> => {
   }finally{
     await dbAccess.end();
     try{
-      // zipファイルをリネームして保管
+      // ファイルをリネームして保管
       const date = formatDate(new Date()) + formatTime(new Date());
       const migratePath = `uploads/${date}${fileType}`;
       rename(filePath, migratePath, (err) => {
