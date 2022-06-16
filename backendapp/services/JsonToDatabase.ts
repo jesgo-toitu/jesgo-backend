@@ -6,6 +6,7 @@ import { logging, LOGTYPE } from '../logic/Logger';
 import { Extract } from 'unzipper';
 import * as fs from 'fs';
 import fse from 'fs-extra';
+import * as path from 'path';
 
 //インターフェース
 
@@ -187,6 +188,7 @@ export interface JSONSchema7 {
   'jesgo:set'?: string | undefined;
   'jesgo:parentschema'?: string[] | undefined;
   'jesgo:unique'?: boolean | undefined;
+  'jesgo:copy'?: boolean | undefined;
   'jesgo:subschema'?: string[] | undefined;
   'jesgo:childschema'?: string[] | undefined;
   'jesgo:ref'?: string | undefined;
@@ -796,9 +798,16 @@ export const uploadZipFile = async (data:any):Promise<ApiReturnObject> => {
   const dirPath = './tmp';
   // eslint-disable-next-line
   const filePath:string = data.path;
+  let fileType:string = path.extname(filePath).toLocaleLowerCase()
   // eslint-disable-next-line
   try{
-    fs.createReadStream(filePath).pipe( Extract( { path: './tmp/' } ) );
+    switch (fileType) {
+      case '.zip':
+        fs.createReadStream(filePath).pipe( Extract( { path: path.join(dirPath, path.sep) } ) );
+        break;
+      case '.json':
+        fs.copyFileSync(filePath, path.join(dirPath, path.basename(filePath)))
+    }
     
     await sleep(500);
 
@@ -841,7 +850,7 @@ export const uploadZipFile = async (data:any):Promise<ApiReturnObject> => {
     try{
       // zipファイルをリネームして保管
       const date = formatDate(new Date()) + formatTime(new Date());
-      const migratePath = `uploads/${date}.zip`;
+      const migratePath = `uploads/${date}${fileType}`;
       rename(filePath, migratePath, (err) => {
         if (err) {
           logging(LOGTYPE.ERROR, `エラー発生 ${err.message}`, 'JsonToDatabase', 'uploadZipFile');
@@ -852,22 +861,9 @@ export const uploadZipFile = async (data:any):Promise<ApiReturnObject> => {
       logging(LOGTYPE.ERROR, `リネーム対象無し`, 'JsonToDatabase', 'uploadZipFile');
     }
 
-    try{
-      // zipファイルをリネームして保管
-      const date = formatDate(new Date()) + formatTime(new Date());
-      const migratePath = `uploads/${date}.zip`;
-      rename(filePath, migratePath, (err) => {
-        if (err) {
-          logging(LOGTYPE.ERROR, `エラー発生 ${err.message}`, 'JsonToDatabase', 'uploadZipFile');
-        }
-        logging(LOGTYPE.DEBUG, `リネーム完了`, 'JsonToDatabase', 'uploadZipFile');
-      });
-    }catch{
-      logging(LOGTYPE.ERROR, `リネーム対象無し`, 'JsonToDatabase', 'uploadZipFile');
-    }
     // 展開したファイルを削除
     // eslint-disable-next-line
-    fse.remove('./tmp/', (err) => {
+    fse.remove(path.join(dirPath, path.sep), (err) => {
       if (err){
         logging(LOGTYPE.ERROR, `エラー発生 ${err.message}`, 'JsonToDatabase', 'uploadZipFile');
       }
