@@ -8,9 +8,8 @@ import {
   verify,
 } from 'jsonwebtoken';
 import envVariables from '../config';
-import { ApiReturnObject, RESULT } from '../logic/ApiCommon';
-import { userInfo } from 'os';
-import { check } from 'prettier';
+import { ApiReturnObject, getToken, RESULT } from '../logic/ApiCommon';
+import { logging, LOGTYPE} from '../logic/Logger';
 
 // Message
 export const StaffErrorMessage = {
@@ -35,11 +34,12 @@ const rollList = [0, 1, 100, 101, 1000];
 export const loginIdCheck = (
   value:string
 ): boolean => {
-  var regex = new RegExp(LOGINID_PATTERN);
+  logging(LOGTYPE.DEBUG, '呼び出し', 'Users', 'loginIdCheck');
+  const regex = new RegExp(LOGINID_PATTERN);
   if (regex.test(value)) {
-    console.log("正規表現パターンに一致しています。");
+    logging(LOGTYPE.DEBUG, '正規表現パターンに一致しています。', 'Users', 'loginIdCheck');
   }else{
-    console.log("正規表現パターンに一致していません。");
+    logging(LOGTYPE.DEBUG, '正規表現パターンに一致していません。', 'Users', 'loginIdCheck');
     return false;
   }
   return true;
@@ -48,11 +48,12 @@ export const loginIdCheck = (
 export const passwordCheck = (
   value:string
 ): boolean => {
-  var regex = new RegExp(PASSWORD_PATTERN);
+  logging(LOGTYPE.DEBUG, '呼び出し', 'Users', 'passwordCheck');
+  const regex = new RegExp(PASSWORD_PATTERN);
     if (regex.test(value)) {
-      console.log("正規表現パターンに一致しています。");
+      logging(LOGTYPE.DEBUG, '正規表現パターンに一致しています。', 'Users', 'passwordCheck');
     }else{
-      console.log("正規表現パターンに一致していません。");
+      logging(LOGTYPE.DEBUG, '正規表現パターンに一致していません。', 'Users', 'passwordCheck');
       return false;
     }
     return true;
@@ -111,27 +112,6 @@ export const roll = {
 };
 
 /**
- * ユーザ情報の取得(一覧)
- * 権限：管理者
- * すべてのユーザ一覧を表示する
- * @returns ユーザ情報一覧(dispUser)の配列
- */
-export const lookupUser = async (): Promise<dispUser[] | undefined> => {
-  const dbAccess = new DbAccess();
-  await dbAccess.connectWithConf();
-  const ret = (await dbAccess.query(
-    'SELECT user_id, name, display_name, roll_id FROM jesgo_user'
-  )) as dispUser[];
-  await dbAccess.end();
-  if (ret != null) {
-    console.log(ret);
-    return ret;
-  } else {
-    console.log('error');
-  }
-};
-
-/**
  * ユーザの新規登録
  * 権限：管理者
  * 必要情報を入力し、ユーザを新規登録する
@@ -147,13 +127,14 @@ export const signUpUser = async (
   password: string,
   roll_id: number
 ): Promise<ApiReturnObject> => {
+  logging(LOGTYPE.DEBUG, '呼び出し', 'Users', 'signUpUser');
 
-  var result = RESULT.NORMAL_TERMINATION;
-  var updateId = -1;
+  let result = RESULT.NORMAL_TERMINATION;
+  let updateId = -1;
 
-  let errorMessage = new Array();
+  const errorMessage = [];
 
-  var checkName = name.trim();
+  const checkName = name.trim();
   if( !checkName )
     errorMessage.push(StaffErrorMessage.LOGINID_NOT_ENTERED);
   else{
@@ -161,7 +142,7 @@ export const signUpUser = async (
       errorMessage.push(StaffErrorMessage.LOGINID_POLICY_ERROR);
   }
 
-  let checkDisplayName = display_name.trim();
+  const checkDisplayName = display_name.trim();
   if( !checkDisplayName){
     errorMessage.push(StaffErrorMessage.DISPLAYNAME_NOT_ENTERED);
   }else{
@@ -169,7 +150,7 @@ export const signUpUser = async (
       errorMessage.push(StaffErrorMessage.DISPLAYNAME_LENGTH_ERROR);
   }
 
-  var checkPassword = password.trim();
+  const checkPassword = password.trim();
   if(!checkPassword){
     errorMessage.push(StaffErrorMessage.PASSWORD_NOT_ENTERED); 
   }else{
@@ -185,7 +166,7 @@ export const signUpUser = async (
   if( errorMessage.length > 0 ){
     result = RESULT.FAILED_USER_ERROR;
 
-    var json = '{ "detail":[ ${errorMessage.join()} ] }';
+    const json = '{ "detail":[ ${errorMessage.join()} ] }';
 
     return { statusNum: result, body: json };
   }
@@ -200,20 +181,20 @@ export const signUpUser = async (
 
   if( ret.length > 0 ){
     if( ret[0].deleted ){
-      console.log("User Already deleted")
+      logging(LOGTYPE.INFO, 'User Already deleted', 'Users', 'signUpUser');
       updateId = ret[0].user_id;
     }else{
-      console.log("User Already to update")
+      logging(LOGTYPE.INFO, 'User Already to update', 'Users', 'signUpUser');
       result = result = RESULT.FAILED_USER_ALREADY_REGISTERED;
     }
   }
 
   if( result == RESULT.NORMAL_TERMINATION ){
     hash(password + envVariables.passwordSalt, 10, async function (err, hash) {
-      var ret;
+      let ret;
       if( updateId > -1 ){
         // update
-        console.log("User update user_id:" + updateId);
+        logging(LOGTYPE.INFO, `User update user_id:${updateId}`, 'Users', 'signUpUser');
         ret = await dbAccess.query(
           'UPDATE jesgo_user set name = $1, display_name = $2, password_hash = $3, roll_id = $4, deleted = false WHERE user_id = $5',
           [name, display_name, hash, Number(roll_id), updateId]
@@ -221,7 +202,7 @@ export const signUpUser = async (
         await dbAccess.end();
       }else{
         //insert
-        console.log("User insert")
+        logging(LOGTYPE.INFO, 'User insert', 'Users', 'signUpUser');
         ret = await dbAccess.query(
           'INSERT INTO jesgo_user (name, display_name, password_hash, roll_id) VALUES ($1, $2, $3, $4)',
           [name, display_name, hash, Number(roll_id)]
@@ -229,9 +210,14 @@ export const signUpUser = async (
         await dbAccess.end();
       }
       if (ret != null) {
-        console.log('success');
+        logging(LOGTYPE.INFO, 'success', 'Users', 'signUpUser');
       } else {
-        console.log(err?.message);
+        if(err){
+          logging(LOGTYPE.ERROR, err.message, 'Users', 'signUpUser');
+        }else{
+          logging(LOGTYPE.ERROR, '不明なエラー', 'Users', 'signUpUser');
+        }
+        
         result = RESULT.FAILED_USER_ERROR;
       }
     });
@@ -247,19 +233,20 @@ export const signUpUser = async (
 export const deleteUser = async (
   user_id: number
 ): Promise<ApiReturnObject> => {
+  logging(LOGTYPE.DEBUG, '呼び出し', 'Users', 'deleteUser');
 
   const dbAccess = new DbAccess();
   await dbAccess.connectWithConf();
 
-  var result = RESULT.NORMAL_TERMINATION;
+  let result = RESULT.NORMAL_TERMINATION;
 
-  let ret = await dbAccess.query(
+  const ret = await dbAccess.query(
     'UPDATE jesgo_user SET deleted = true WHERE user_id = $1',
     [user_id]
   );
   await dbAccess.end();
   if (ret != null) {
-    console.log('success user_id:' + user_id);
+    logging(LOGTYPE.INFO, `success user_id: ${user_id}`, 'Users', 'deleteUser');
   } else {
     result = RESULT.FAILED_USER_ERROR;
   }
@@ -277,24 +264,29 @@ export const changePassword = async (
   user_id: number,
   password: string,
 ): Promise<ApiReturnObject> => {
+  logging(LOGTYPE.DEBUG, '呼び出し', 'Users', 'changePassword');
 
-  var result = RESULT.NORMAL_TERMINATION;
+  let result = RESULT.NORMAL_TERMINATION;
 
   const dbAccess = new DbAccess();
   await dbAccess.connectWithConf();
 
   hash(password + envVariables.passwordSalt, 10, async function (err, hash) {
     //update文を発行
-    let ret;
-    ret = await dbAccess.query(
+    const ret = await dbAccess.query(
       'UPDATE jesgo_user SET password_hash = $1 WHERE user_id = $2',
       [hash, user_id]
     );
     await dbAccess.end();
     if (ret != null) {
-      console.log('success');
+      logging(LOGTYPE.INFO, 'success', 'Users', 'changePassword');
     } else {
-      console.log(err?.message);
+      if(err){
+        logging(LOGTYPE.ERROR, err.message, 'Users', 'changePassword');
+      }else{
+        logging(LOGTYPE.ERROR, '不明なエラー', 'Users', 'changePassword');
+      }
+      
       result = RESULT.FAILED_USER_ERROR;
     }
   });
@@ -318,8 +310,9 @@ export const editUserProfile = async (
   password: string,
   roll_id: number
 ): Promise<ApiReturnObject> => {
+  logging(LOGTYPE.DEBUG, '呼び出し', 'Users', 'editUserProfile');
 
-  var result = RESULT.NORMAL_TERMINATION;
+  let result = RESULT.NORMAL_TERMINATION;
 
   // パスワード変更フラグ
   let passwordChange = false;
@@ -333,28 +326,30 @@ export const editUserProfile = async (
   if( passwordChange ){
     hash(password + envVariables.passwordSalt, 10, async function (err, hash) {
       //update文を発行
-      let ret;
-      ret = await dbAccess.query(
+      const ret = await dbAccess.query(
         'UPDATE jesgo_user SET display_name = $1, password_hash = $2, roll_id = $3 WHERE user_id = $4',
         [display_name, hash, roll_id, user_id]
       );
       await dbAccess.end();
       if (ret != null) {
-        console.log('editUserProfile whith password change success');
+        logging(LOGTYPE.INFO, 'editUserProfile with password change success', 'Users', 'editUserProfile');
       } else {
-        console.log(err?.message);
+        if(err){
+          logging(LOGTYPE.ERROR, err.message, 'Users', 'editUserProfile');
+        }else{
+          logging(LOGTYPE.ERROR, '不明なエラー', 'Users', 'editUserProfile');
+        }
         result = RESULT.FAILED_USER_ERROR;
       }
     });
   }else{
-    let ret;
-    ret = await dbAccess.query(
+    const ret = await dbAccess.query(
       'UPDATE jesgo_user SET display_name = $1, roll_id = $2 WHERE user_id = $3',
       [display_name, roll_id, user_id]
     );
     await dbAccess.end();
     if (ret != null) {
-      console.log('editUserProfile success');
+      logging(LOGTYPE.INFO, 'editUserProfile success', 'Users', 'editUserProfile');
     } else {
       result = RESULT.FAILED_USER_ERROR;
     }    
@@ -378,6 +373,7 @@ export const editMyProfile = async (
   display_name: string,
   password: string
 ): Promise<boolean> => {
+  logging(LOGTYPE.DEBUG, '呼び出し', 'Users', 'editMyProfile');
   // パスワード変更フラグ
   let passwordChange = false;
   if (password.length > 0) {
@@ -403,10 +399,14 @@ export const editMyProfile = async (
     }
     await dbAccess.end();
     if (ret != null) {
-      console.log('success');
+      logging(LOGTYPE.INFO, 'success', 'Users', 'editMyProfile');
       return true;
     } else {
-      console.log(err?.message);
+      if(err){
+        logging(LOGTYPE.ERROR, err.message, 'Users', 'editMyProfile');
+      }else{
+        logging(LOGTYPE.ERROR, '不明なエラー', 'Users', 'editMyProfile');
+      }
       return false;
     }
   });
@@ -414,58 +414,12 @@ export const editMyProfile = async (
 };
 
 /**
-ユーザの削除
- * 権限：管理者
- * 対象ユーザを論削状態にする。
- 入力：ユーザID
- 返却：TRUEorFALSE
- * @param name 
- * @param password 
- * @returns 
- */
-/*
-export const deleteUser = (user_id: string) => {
-    return new Promise<boolean>(async (solve) => {
-        // パスワード変更フラグ
-        let passwordChange: boolean = false;
-        if (password.length > 0) {
-            // パスワードが1文字以上であればパスワード変更フラグを立てる
-            passwordChange = true;
-        }
-        const dbAccess = new DbAccess();
-        await dbAccess.connectWithConf();
-
-        hash(password + envVariables.passwordSalt,
-            10,
-            async function (err, hash) {
-                //update文を発行
-                let ret;
-                if (passwordChange) {
-                    ret = await dbAccess.query("UPDATE jesgo_user SET name = $1, display_name = $2, password_hash = $3, roll_id = $4 WHERE user_id = $5", [name, display_name, hash, roll_id, user_id]);
-                } else {
-                    ret = await dbAccess.query("UPDATE jesgo_user SET name = $1, display_name = $2, roll_id = $3 WHERE user_id = $4", [name, display_name, roll_id, user_id]);
-                }
-                await dbAccess.end();
-                if (ret != null) {
-                    console.log("success");
-                    solve(true);
-                }
-                else {
-                    console.log(err?.message);
-                    solve(false);
-                }
-            }
-        );
-    });
-}
-*/
-
-/**
  * JWTからユーザ情報を取得する
  * @param token
  * @returns ユーザ情報(dispUser)
  */
 export const decordJwt = (token: Jwt, isReflesh = false): ApiReturnObject => {
+  logging(LOGTYPE.DEBUG, '呼び出し', 'Users', 'decordJwt');
   try {
     let secret = envVariables.privateKey;
     if (isReflesh) {
@@ -475,16 +429,36 @@ export const decordJwt = (token: Jwt, isReflesh = false): ApiReturnObject => {
     return { statusNum: RESULT.NORMAL_TERMINATION, body: decoded };
   } catch (e) {
     if (e instanceof TokenExpiredError) {
-      console.error('トークンの有効期限が切れています。', e);
+      logging(LOGTYPE.INFO, 'トークンの有効期限が切れています。', 'Users', 'decordJwt');
       return { statusNum: RESULT.TOKEN_EXPIRED_ERROR, body: null };
     } else if (e instanceof JsonWebTokenError) {
-      console.error('トークンが不正です。', e);
+      logging(LOGTYPE.ERROR, 'トークンが不正です。', 'Users', 'decordJwt');
     } else {
-      console.error('トークンの検証でその他のエラーが発生しました。', e);
+      logging(LOGTYPE.ERROR, 'トークンの検証でその他のエラーが発生しました。', 'Users', 'decordJwt');
     }
   }
   return { statusNum: RESULT.ABNORMAL_TERMINATION, body: null };
 };
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const getUsernameFromRequest = (req:any) => {
+  logging(LOGTYPE.DEBUG, '呼び出し', 'Users', 'getUsernameFromRequest');
+  try {
+    const jwt: Jwt = { token: getToken(req) };
+    const myApiReturnObject = decordJwt(jwt);
+    if (
+      myApiReturnObject.statusNum === RESULT.NORMAL_TERMINATION
+    ) {
+      return (myApiReturnObject.body as dispUser).display_name;
+    }
+    else{
+      // 戻り値がエラーの場合はログイン名なし
+      return '';
+    }
+  }catch {
+    return '';
+  }
+}
 
 /**
  *
@@ -496,6 +470,7 @@ export const checkAuth = async (
   token: string | undefined,
   targetAuth: string
 ): Promise<ApiReturnObject> => {
+  logging(LOGTYPE.DEBUG, '呼び出し', 'Users', 'checkAuth');
   try {
     let myApiReturnObject: ApiReturnObject = {
       statusNum: RESULT.ABNORMAL_TERMINATION,
@@ -529,7 +504,7 @@ export const checkAuth = async (
       myApiReturnObject.body = ret[0].auth;
     } else {
       // レコードが見つからなければbodyをnullにしてエラーを返却する
-      console.log('error');
+      logging(LOGTYPE.ERROR, '不明なエラー', 'Users', 'checkAuth');
       myApiReturnObject.statusNum = RESULT.ABNORMAL_TERMINATION;
       myApiReturnObject.body = null;
     }
@@ -549,6 +524,7 @@ export const loginUser = async (
   name: string,
   password: string
 ): Promise<ApiReturnObject> => {
+  logging(LOGTYPE.DEBUG, '呼び出し', 'Users', 'loginUser');
   const dbAccess = new DbAccess();
   const plainPassword = password + envVariables.passwordSalt;
   await dbAccess.connectWithConf();
@@ -594,7 +570,7 @@ export const loginUser = async (
     );
     return { statusNum: RESULT.NORMAL_TERMINATION, body: returnObj };
   } else {
-    console.log('err');
+    logging(LOGTYPE.ERROR, '不明なエラー', 'Users', 'loginUser');
     return {
       statusNum: RESULT.ABNORMAL_TERMINATION,
       body: { token: 'error', reflesh_token: 'error' },
@@ -603,6 +579,7 @@ export const loginUser = async (
 };
 
 export const refleshLogin = (oldToken: string | undefined): ApiReturnObject => {
+  logging(LOGTYPE.DEBUG, '呼び出し', 'Users', 'refleshLogin');
   try {
     let myApiReturnObject: ApiReturnObject = {
       statusNum: RESULT.ABNORMAL_TERMINATION,
@@ -643,7 +620,7 @@ export const refleshLogin = (oldToken: string | undefined): ApiReturnObject => {
     });
     return { statusNum: RESULT.NORMAL_TERMINATION, body: token };
   } catch (err) {
-    console.log(err);
+    logging(LOGTYPE.ERROR, (err as Error).message, 'Users', 'refleshLogin');
     return { statusNum: RESULT.ABNORMAL_TERMINATION, body: null };
   }
 };
@@ -663,11 +640,8 @@ export interface searchUserRequest extends ParsedQs {
   showProgressAndRecurrence: string;
 }
 
-export const searchUser = async (
-  query: searchUserRequest
-): Promise<ApiReturnObject> => {
-  
-  console.log("searchUser");
+export const searchUser = async (): Promise<ApiReturnObject> => {
+  logging(LOGTYPE.DEBUG, '呼び出し', 'Users', 'searchUser');
 
   const dbAccess = new DbAccess();
   await dbAccess.connectWithConf();
@@ -680,7 +654,7 @@ export const searchUser = async (
   )) as dbRow[];
   await dbAccess.end();
 
-  console.log(dbRows.length);
+  logging(LOGTYPE.DEBUG, `rowLength = ${dbRows.length}`, 'Users', 'searchUser');
   return { statusNum: RESULT.NORMAL_TERMINATION, body: { data: dbRows } };
  
 };

@@ -1,7 +1,7 @@
 import { DbAccess } from '../logic/DbAccess';
 import { ParsedQs } from 'qs';
 import { ApiReturnObject, RESULT } from '../logic/ApiCommon';
-
+import { logging, LOGTYPE } from '../logic/Logger'
 //インターフェース
 export interface dbRow {
   his_id: string;
@@ -10,6 +10,7 @@ export interface dbRow {
   death_age: number;
   schemaidstring: string;
   since: string;
+  start_date: string;
   last_updated: string;
   figo: string;
   child_documents: number[];
@@ -54,23 +55,43 @@ interface userData {
 }
 
 export interface searchPatientRequest extends ParsedQs {
-  registrationYear: string;
+  treatmentStartYear: string;
   cancerType: string;
   showOnlyTumorRegistry: string;
-  startOfTreatmentStartDate: string;
-  endOfTreatmentStartDate: string;
-  checkOfTreatmentStartDate: string;
+  startOfDiagnosisDate: string;
+  endOfDiagnosisDate: string;
+  checkOfDiagnosisDate: string;
   checkOfBlankFields: string;
-  blankFields: {
-    advancedStage: string;
-    pathlogicalDiagnosis: string;
-    initialTreatment: string;
-    copilacations: string;
-    threeYearPrognosis: string;
-    fiveYearPrognosis: string;
-  };
+  advancedStage: string;
+  pathlogicalDiagnosis: string;
+  initialTreatment: string;
+  copilacations: string;
+  threeYearPrognosis: string;
+  fiveYearPrognosis: string;
   showProgressAndRecurrence: string;
 }
+
+/**
+ * 元となる文字列に区切り文字と新規文字列を追加する
+ * 元となる文字列が空であれば区切り文字は追加せず追加文字列のみを返す
+ * @param baseString 元となる文字列
+ * @param addString 新規文字列
+ * @param spacer 区切り文字(指定しない場合は空文字)
+ * @returns
+ */
+ const addStatusAllowDuplicate = (
+  baseString: string,
+  addString: string,
+  spacer = ''
+): string => {
+  logging(LOGTYPE.DEBUG, '呼び出し', 'SearchPatient', 'addStatusAllowDuplicate');
+  // 元となる文字列が空でない
+  if (baseString != '') {
+    return baseString + spacer + addString;
+  }
+  // 元となる文字列が空
+  return addString;
+};
 
 /**
  * 元となる文字列に区切り文字と新規文字列を追加する
@@ -86,14 +107,10 @@ const addStatus = (
   addString: string,
   spacer = ''
 ): string => {
+  logging(LOGTYPE.DEBUG, '呼び出し', 'SearchPatient', 'addStatus');
   // 新規文字列が既に含まれていない
   if (baseString !== null && baseString.indexOf(addString) == -1) {
-    // 元となる文字列が空でない
-    if (baseString != '') {
-      return baseString + spacer + addString;
-    }
-    // 元となる文字列が空
-    return addString;
+    return addStatusAllowDuplicate(baseString, addString, spacer);
   }
   // 新規文字列が既に含まれている
   return baseString;
@@ -102,6 +119,7 @@ const addStatus = (
 export const searchPatients = async (
   query: searchPatientRequest
 ): Promise<ApiReturnObject> => {
+  logging(LOGTYPE.DEBUG, '呼び出し', 'SearchPatient', 'searchPatients');
   const dbAccess = new DbAccess();
   await dbAccess.connectWithConf();
   const dbRows: dbRow[] = (await dbAccess.query(
@@ -111,6 +129,7 @@ export const searchPatients = async (
     sch.schema_id_string as schemaidstring, 
     date_of_death, decline, 
     doc.document->>'診断日' as since, to_char(ca.last_updated, 'yyyy/mm/dd') as last_updated, 
+    doc.document->>'治療開始年月日' as start_date, 
     doc.document->>'FIGO' as figo, 
     doc.document->>'投与開始日' as chemotherapy_date, 
     doc.document->>'手術日' as operation_date, 
@@ -236,8 +255,15 @@ export const searchPatients = async (
       userData.diagnosis = addStatus(userData.diagnosis, cancerType, '･');
 
       // 診断日がもともと記録されていないか、もっと古いものであれば書き換える
-      if (userData.since == null || userData.since > dbRow.since) {
+      if (userData.since == null || userData.since !== '' && userData.since > dbRow.since) {
         userData.since = dbRow.since;
+      }
+
+      // DBに初回治療日があり、現在値が記録されていないか、もっと古いものであれば書き換える
+      if(dbRow.start_date !== ''){
+        if (userData.startDate == null || userData.startDate > dbRow.start_date) {
+          userData.startDate = dbRow.start_date;
+        }
       }
     }
 
@@ -268,8 +294,10 @@ export const searchPatients = async (
       }
 
       // 初回治療日がもともと記録されていないか、もっと古いものであれば書き換える
-      if (userData.startDate == null || userData.startDate > startDate) {
-        userData.startDate = startDate;
+      if(dbRow.start_date !== ''){
+          if (userData.startDate == null || userData.startDate > dbRow.start_date) {
+          userData.startDate = startDate;
+        }
       }
 
       if(iconTag !== ''){
@@ -291,18 +319,19 @@ export const searchPatients = async (
     if (dbRow.schemaidstring === '/schema/EM/staging' ||
     dbRow.schemaidstring === '/schema/CC/staging' ||
     dbRow.schemaidstring === '/schema/OV/staging' ) {
+      const figo = dbRow.figo && dbRow.figo !== '' ? dbRow.figo : '未'
       if (dbRow.schemaidstring === '/schema/EM/staging') {
-        userData.advancedStageEndometrial = dbRow.figo;
+        userData.advancedStageEndometrial = figo;
       }
 
       if (dbRow.schemaidstring === '/schema/CC/staging') {
-        userData.advancedStageCervical = dbRow.figo;
+        userData.advancedStageCervical = figo;
       }
 
       if (dbRow.schemaidstring === '/schema/OV/staging') {
-        userData.advancedStageOvarian = dbRow.figo;
+        userData.advancedStageOvarian = figo;
       }
-      userData.advancedStage = addStatus(userData.advancedStage, dbRow.figo, '・');
+      userData.advancedStage = addStatusAllowDuplicate(userData.advancedStage, figo, '・');
     }
 
     // 再発
@@ -336,7 +365,8 @@ export const searchPatients = async (
   // 未入力埋め
   for (let index = 0; index < userDataList.length; index++) {
     const userData = userDataList[index];
-    if (userData.advancedStage === '') {
+    const regex = new RegExp(/^[未・]*$/);
+    if (userData.advancedStage === '' || regex.test(userData.advancedStage)) {
       userData.advancedStage = ('未');
     }
     if (userData.diagnosis === '') {
@@ -347,17 +377,17 @@ export const searchPatients = async (
     }
   }
 
-  // 登録年次指定がある場合、登録年次が異なるものを配列から削除する
-  if (query.registrationYear && query.registrationYear != 'all') {
+  // 初回治療日指定がある場合、初回治療日が異なるものを配列から削除する
+  if (query.treatmentStartYear && query.treatmentStartYear != 'all') {
     for (let index = 0; index < userDataList.length; index++) {
       const userData = userDataList[index];
-      if (userData.since == null) {
+      if (userData.startDate == null) {
         userDataList.splice(index, 1);
         index--;
         continue;
       } else {
-        const since: Date = new Date(userData.since);
-        if (since.getFullYear().toString() !== query.registrationYear) {
+        const startDate: Date = new Date(userData.startDate);
+        if (startDate.getFullYear().toString() !== query.treatmentStartYear) {
           userDataList.splice(index, 1);
           index--;
           continue;
@@ -384,12 +414,84 @@ export const searchPatients = async (
       }
     }
   }
+
+  // 診断日指定がある場合、診断日が異なるものを配列から削除する
+  if (query.startOfDiagnosisDate) {
+    let startDate = query.startOfDiagnosisDate;
+    let endDate = query.endOfDiagnosisDate;
+    // 日付の開始と終了が前後してても対応する
+    if(startDate > endDate){
+      startDate = query.endOfDiagnosisDate;
+      endDate = query.startOfDiagnosisDate;
+    }
+    for (let index = 0; index < userDataList.length; index++) {
+      const userData = userDataList[index];
+
+      // 診察日が指定されていないものを配列から削除する
+      if (userData.since === null) {
+        userDataList.splice(index, 1);
+        index--;
+        continue;
+      } else {
+        // ユーザーデータ側の診察日を同じ文字列形式(YYYY-MM)に直す
+        const dateObj = new Date(userData.since);
+        const y = dateObj.getFullYear();
+        const m = `00${dateObj.getMonth() + 1}`.slice(-2);
+        const diagnosisDate = `${y}-${m}`;
+
+        // 文字列で大小比較を行い、範囲外のものを配列から削除する
+        if (!(startDate <= diagnosisDate && diagnosisDate <= endDate)) {
+          userDataList.splice(index, 1);
+          index--;
+          continue;
+        }
+      }
+    }
+  }
+
+  // 未入力チェック系
+  {
+    // 進行期
+    if(query.advancedStage && query.advancedStage === 'true'){
+      for (let index = 0; index < userDataList.length; index++) {
+        const userData = userDataList[index];
+        if (userData.advancedStage.indexOf('未') == -1) {
+          userDataList.splice(index, 1);
+          index--;
+        }
+      }
+    }
+
+    // 診断
+    if(query.pathlogicalDiagnosis && query.pathlogicalDiagnosis === 'true'){
+      for (let index = 0; index < userDataList.length; index++) {
+        const userData = userDataList[index];
+        if (userData.diagnosis.indexOf('未') == -1) {
+          userDataList.splice(index, 1);
+          index--;
+        }
+      }
+    }
+    
+    // 初回治療
+    if(query.initialTreatment && query.initialTreatment === 'true'){
+      for (let index = 0; index < userDataList.length; index++) {
+        const userData = userDataList[index];
+        if (userData.initialTreatment.length > 0) {
+          userDataList.splice(index, 1);
+          index--;
+        }
+      }
+    }
+  }
+
   return { statusNum: RESULT.NORMAL_TERMINATION, body: { data: userDataList } };
 };
 
 export const deletePatient = async (
   caseId: number
 ): Promise<ApiReturnObject> => {
+  logging(LOGTYPE.DEBUG, '呼び出し', 'SearchPatient', 'deletePatient');
   let returnObj = true;
   const dbAccess = new DbAccess();
   try {
@@ -403,7 +505,7 @@ export const deletePatient = async (
       [caseId]
     );
   } catch (e) {
-    console.log(e);
+    logging(LOGTYPE.ERROR, `エラー発生 ${(e as Error).message}`, 'SearchPatient', 'deletePatient');
     returnObj = false;
   } finally {
     await dbAccess.end();

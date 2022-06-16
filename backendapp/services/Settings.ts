@@ -1,3 +1,4 @@
+import { logging, LOGTYPE } from '../logic/Logger';
 import { ApiReturnObject, RESULT } from '../logic/ApiCommon';
 import { DbAccess } from '../logic/DbAccess';
 
@@ -12,7 +13,7 @@ export type settings = {
 };
 
 export const getSettings = async (): Promise<ApiReturnObject> => {
-  console.log('getSettings');
+  logging(LOGTYPE.DEBUG, '呼び出し', 'Settings', 'getSettings');
   try {
     const query = 
     `SELECT 
@@ -33,12 +34,13 @@ export const getSettings = async (): Promise<ApiReturnObject> => {
 
     return { statusNum: RESULT.NORMAL_TERMINATION, body: ret[0] };
   } catch (e) {
-    console.log(e);
+    logging(LOGTYPE.ERROR, `エラー発生 ${(e as Error).message}`, 'Settings', 'getSettings');
     return { statusNum: RESULT.ABNORMAL_TERMINATION, body: null };
   }
 };
 
 export const updateSettings = async (json:settings): Promise<ApiReturnObject> => {
+  logging(LOGTYPE.DEBUG, '呼び出し', 'Settings', 'updateSettings');
   try {
 
     const saveJson = {
@@ -66,7 +68,7 @@ export const updateSettings = async (json:settings): Promise<ApiReturnObject> =>
 
     return { statusNum: RESULT.NORMAL_TERMINATION, body: null };
   } catch (e) {
-    console.log(e);
+    logging(LOGTYPE.ERROR, `エラー発生 ${(e as Error).message}`, 'Settings', 'updateSettings');
     return { statusNum: RESULT.ABNORMAL_TERMINATION, body: null };
   }
 };

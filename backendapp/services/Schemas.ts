@@ -1,3 +1,4 @@
+import { logging, LOGTYPE } from '../logic/Logger';
 import { ApiReturnObject, RESULT } from '../logic/ApiCommon';
 import { DbAccess } from '../logic/DbAccess';
 
@@ -31,9 +32,9 @@ export type schemaRecord = {
 };
 
 export const getJsonSchema = async (): Promise<ApiReturnObject> => {
-  console.log('getJsonSchema');
+  logging(LOGTYPE.DEBUG, `呼び出し`, 'Schemas', 'getJsonSchema');
   try {
-    const query = `SELECT * FROM jesgo_document_schema`;
+    const query = `SELECT * FROM jesgo_document_schema ORDER BY schema_primary_id DESC`;
 
     const dbAccess = new DbAccess();
     await dbAccess.connectWithConf();
@@ -42,15 +43,15 @@ export const getJsonSchema = async (): Promise<ApiReturnObject> => {
 
     return { statusNum: RESULT.NORMAL_TERMINATION, body: ret };
   } catch (e) {
-    console.log(e);
+    logging(LOGTYPE.ERROR, `エラー発生 ${(e as Error).message}`, 'Schemas', 'getJsonSchema');
     return { statusNum: RESULT.ABNORMAL_TERMINATION, body: null };
   }
 };
 
 export const getRootSchemaIds = async (): Promise<ApiReturnObject> => {
-  console.log('getRootSchemaIds');
+  logging(LOGTYPE.DEBUG, `呼び出し`, 'Schemas', 'getRootSchemaIds');
   try {
-    const query = `select * from jesgo_document_schema where document_schema->>'jesgo:parentschema' like '%"/"%';`;
+    const query = `select DISTINCT(schema_id) from jesgo_document_schema where document_schema->>'jesgo:parentschema' like '%"/"%';`;
 
     const dbAccess = new DbAccess();
     await dbAccess.connectWithConf();
@@ -64,7 +65,7 @@ export const getRootSchemaIds = async (): Promise<ApiReturnObject> => {
     }
     return { statusNum: RESULT.NORMAL_TERMINATION, body: ids };
   } catch (e) {
-    console.log(e);
+    logging(LOGTYPE.ERROR, `エラー発生 ${(e as Error).message}`, 'Schemas', 'getRootSchemaIds');
     return { statusNum: RESULT.ABNORMAL_TERMINATION, body: [] };
   }
 };
@@ -78,6 +79,7 @@ type jesgoDocumentFromDb = {
   document: any;
   child_documents: string[];
   schema_id: number;
+  schema_primary_id: number;
   inherit_schema: number[];
   schema_major_version: number;
   registrant: number;
@@ -109,6 +111,7 @@ export type jesgoDocumentValueItem = {
   document: any;
   child_documents: string[];
   schema_id: number;
+  schema_primary_id: number;
   inherit_schema: number[];
   schema_major_version: number;
   registrant: number;
@@ -153,6 +156,7 @@ const str2Num = (numStr: string): number => {
 export const registrationCaseAndDocument = async (
   saveDataObjDefine: SaveDataObjDefine
 ): Promise<ApiReturnObject> => {
+  logging(LOGTYPE.DEBUG, `呼び出し`, 'Schemas', 'registrationCaseAndDocument');
   // 戻り値 0:正常, -1:異常(不明), -2:ID被り
   const ID_DUPLICATION = -2;
 
@@ -283,8 +287,9 @@ export const registrationCaseAndDocument = async (
               readonly, 
               deleted, 
               root_order, 
-              inherit_schema 
-              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+              inherit_schema, 
+              schema_primary_id 
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
               [
                 caseId,
                 str2Date(jesgoDocumentCover.value.event_date),
@@ -298,6 +303,7 @@ export const registrationCaseAndDocument = async (
                 jesgoDocumentCover.value.deleted,
                 jesgoDocumentCover.root_order,
                 jesgoDocumentCover.value.inherit_schema,
+                jesgoDocumentCover.value.schema_primary_id,
               ]
             );
 
@@ -321,8 +327,9 @@ export const registrationCaseAndDocument = async (
               readonly = $9, 
               deleted = $10, 
               root_order = $11,
-              inherit_schema = $12 
-              WHERE document_id = $13`,
+              inherit_schema = $12,
+              schema_primary_id = $13 
+              WHERE document_id = $14`,
               [
                 caseId,
                 str2Date(jesgoDocumentCover.value.event_date),
@@ -336,6 +343,7 @@ export const registrationCaseAndDocument = async (
                 jesgoDocumentCover.value.deleted,
                 jesgoDocumentCover.root_order,
                 jesgoDocumentCover.value.inherit_schema,
+                jesgoDocumentCover.value.schema_primary_id,
                 Number(jesgoDocumentCover.key),
               ]
             );
@@ -351,8 +359,7 @@ export const registrationCaseAndDocument = async (
     await dbAccess.query('COMMIT');
     return { statusNum: RESULT.NORMAL_TERMINATION, body: caseId };
   } catch (e) {
-    console.log('catch');
-    console.log(e);
+    logging(LOGTYPE.ERROR, `エラー発生 ${(e as Error).message}`, 'Schemas', 'registrationCaseAndDocument');
     await dbAccess.query('ROLLBACK');
   } finally {
     await dbAccess.end();
@@ -366,6 +373,7 @@ export const registrationCaseAndDocument = async (
 export const getCaseAndDocument = async (
   caseId: number
 ): Promise<ApiReturnObject> => {
+  logging(LOGTYPE.DEBUG, `呼び出し`, 'Schemas', 'getCaseAndDocument');
   try {
     const dbAccess = new DbAccess();
     await dbAccess.connectWithConf();
@@ -395,6 +403,7 @@ export const getCaseAndDocument = async (
           document: doc.document,
           child_documents: doc.child_documents,
           schema_id: doc.schema_id,
+          schema_primary_id: doc.schema_primary_id,
           inherit_schema: doc.inherit_schema, 
           schema_major_version: doc.schema_major_version,
           registrant: doc.registrant,
@@ -413,7 +422,7 @@ export const getCaseAndDocument = async (
     await dbAccess.end();
     return { statusNum: RESULT.NORMAL_TERMINATION, body: returnObj };
   } catch (e) {
-    console.log(e);
+    logging(LOGTYPE.ERROR, `エラー発生 ${(e as Error).message}`, 'Schemas', 'getCaseAndDocument');
     return { statusNum: RESULT.ABNORMAL_TERMINATION, body: null };
   }
 };

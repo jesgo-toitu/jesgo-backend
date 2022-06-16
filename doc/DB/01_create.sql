@@ -51,6 +51,7 @@ FOREIGN KEY(registrant) REFERENCES jesgo_user(user_id)
 
 CREATE TABLE IF NOT EXISTS jesgo_document_schema
 (
+schema_primary_id serial PRIMARY KEY,
 schema_id integer,
 schema_id_string text,
 title text,
@@ -68,8 +69,7 @@ version_major integer NOT NULL,
 version_minor integer NOT NULL,
 plugin_id integer,
 inherit_schema integer[],
-base_schema integer DEFAULT NULL,
-PRIMARY KEY(schema_id, valid_from)
+base_schema integer DEFAULT NULL
 -- TODO★設定テーブル未作成
 -- FOREIGN KEY(plugin_id) REFERENCES jesgo_setting(plugin_id)
 );
@@ -82,6 +82,7 @@ event_date date,
 document JSONB NOT NULL,
 child_documents integer[],
 schema_id integer NOT NULL,
+schema_primary_id integer NOT NULL,
 inherit_schema integer[],
 schema_major_version integer,
 registrant integer,

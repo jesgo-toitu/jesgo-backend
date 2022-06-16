@@ -1,7 +1,9 @@
 import { Client } from 'pg';
 import envVariables from '../config';
+import { logging, LOGTYPE } from './Logger';
 export class DbAccess {
   private client!: Client;
+  public connected = false;
 
   public async connectWithConf() {
     return this.connect(
@@ -37,6 +39,7 @@ export class DbAccess {
       database: database,
     });
     await this.client.connect();
+    this.connected = true;
   }
 
   /**
@@ -56,6 +59,11 @@ export class DbAccess {
    * @returns {Promise}
    */
   public async end() {
-    await this.client.end();
+    try{
+      await this.client.end();
+      this.connected = false;
+    }catch{
+      logging(LOGTYPE.ERROR, `既にDBがクローズされています`, 'DbAccess', 'end');
+    }
   }
 }
