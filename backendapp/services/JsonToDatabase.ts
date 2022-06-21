@@ -737,7 +737,7 @@ export const schemaListUpdate = async () => {
 
     // 子スキーマのリストから重複を削除
     // eslint-disable-next-line
-    const newChildSchemaList = lodash.uniq(childSchemaList) as number[];
+    const newChildSchemaList = lodash.uniq(childSchemaList).filter(id => !subSchemaList.includes(id));
     await dbAccess.query(
       `UPDATE jesgo_document_schema SET subschema = '{${numArrayCast2Pg(
         subSchemaList
