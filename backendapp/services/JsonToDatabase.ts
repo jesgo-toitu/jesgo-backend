@@ -471,13 +471,14 @@ const makeInsertQuery = (schemaInfo: oldSchema, json: JSONSchema7): string[] => 
   query += ', version_major, version_minor';
   if (json['jesgo:version'] != null) {
     try{
-      const majorVersion = Number(json['jesgo:version'].split('.')[0]);
-      const minorVersion = Number(json['jesgo:version'].split('.')[1]);
+      const VersionStringArray:string[] = json['jesgo:version'].split('.');
+      const majorVersion = Number(VersionStringArray[0]);
+      const minorVersion = Number(VersionStringArray[1]);
       
       // 新規登録する物が登録済よりバージョンが低いか同じ場合、エラーを返す
       if(hasVersionUpdateError(schemaInfo.version_major, schemaInfo.version_minor, majorVersion, minorVersion)){
         logging(LOGTYPE.ERROR, `スキーマ(id=${json.$id as string})のバージョンは登録済のものより新しくしてください。`, 'JsonToDatabase', 'makeInsertQuery');
-        throw Error(`スキーマ(id=${json.$id as string})のバージョンは登録済のものより新しくしてください。`);
+        throw Error(`スキーマ(id=${json.$id as string})のバージョンは登録済のものより新しくしてください。`);  
       }
       
       value += `, ${majorVersion}, ${minorVersion}`;
@@ -656,10 +657,12 @@ export const schemaListUpdate = async () => {
       for (let j = 0; j < row.sub_s.length; j++) {
         // ワイルドカードを含むかどうかで処理を分ける
         if(row.sub_s[j].includes('*')){
-          const splitedId = row.sub_s[j].split('*');
-          const searchId = `${splitedId[0]}[^/]*${splitedId[1]}$`;
+          // ワイルドカードはパスに展開される～継承スキーマも対象になる
+          // Postgresは*もある程度してくれるが動作が不明確今ひとつなのでSQL標準に置換
+          // 同時にアンダースコアも任意の一文字として解釈されるのでこれはエスケープする
+          const searchId = row.sub_s[j].replace(/\*/g, '%').replace(/_/g, '\\_');
           const schemaIds: schemaId[] = (await dbAccess.query(
-            'SELECT schema_id FROM jesgo_document_schema WHERE schema_id_string ~ $1',
+            'SELECT schema_id FROM jesgo_document_schema WHERE schema_id_string LIKE $1',
             [searchId]
           )) as schemaId[];
           if (schemaIds.length > 0) {
@@ -680,10 +683,12 @@ export const schemaListUpdate = async () => {
       for (let k = 0; k < row.child_s.length; k++) {
         // ワイルドカードを含むかどうかで処理を分ける
         if(row.child_s[k].includes('*')){
-          const splitedId = row.child_s[k].split('*');
-          const searchId = `${splitedId[0]}[^/]*${splitedId[1]}$`;
+          // ワイルドカードはパスに展開される～継承スキーマも対象になる
+          // Postgresは*もある程度してくれるが動作が不明確今ひとつなのでSQL標準に置換
+          // 同時にアンダースコアも任意の一文字として解釈されるのでこれはエスケープする
+          const searchId = row.child_s[k].replace(/\*/g, '%').replace(/_/g, '\\_');
           const schemaIds: schemaId[] = (await dbAccess.query(
-            'SELECT schema_id FROM jesgo_document_schema WHERE schema_id_string ~ $1',
+            'SELECT schema_id FROM jesgo_document_schema WHERE schema_id_string LIKE $1',
             [searchId]
           )) as schemaId[];
           if (schemaIds.length > 0) {
