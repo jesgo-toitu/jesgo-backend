@@ -294,7 +294,7 @@ export const searchPatients = async (
       }
 
       // 初回治療日がもともと記録されていないか、もっと古いものであれば書き換える
-      if(dbRow.start_date !== ''){
+      if(startDate !== ''){
           if (userData.startDate == null || userData.startDate > dbRow.start_date) {
           userData.startDate = startDate;
         }

@@ -588,7 +588,7 @@ export const schemaListUpdate = async () => {
         // ワイルドカードを含むかどうかで処理を分ける
         if(parentSchemas[i].parent_schemas[j].includes('*')){
           const splitedId = parentSchemas[i].parent_schemas[j].split('*');
-          const searchId = `${splitedId[0]}[^/]*${splitedId[1]}$`;
+          const searchId = splitedId[0].endsWith('/') && splitedId[1] === '' ? `${splitedId[0]}/*` : `${splitedId[0]}[^/]*${splitedId[1]}$`;
           const schemaIds: schemaId[] = (await dbAccess.query(
             'SELECT schema_id FROM jesgo_document_schema WHERE schema_id_string ~ $1',
             [searchId]
@@ -657,7 +657,7 @@ export const schemaListUpdate = async () => {
         // ワイルドカードを含むかどうかで処理を分ける
         if(row.sub_s[j].includes('*')){
           const splitedId = row.sub_s[j].split('*');
-          const searchId = `${splitedId[0]}[^/]*${splitedId[1]}$`;
+          const searchId = splitedId[0].endsWith('/') && splitedId[1] === '' ? `${splitedId[0]}/*` : `${splitedId[0]}[^/]*${splitedId[1]}$`;
           const schemaIds: schemaId[] = (await dbAccess.query(
             'SELECT schema_id FROM jesgo_document_schema WHERE schema_id_string ~ $1',
             [searchId]
@@ -681,7 +681,7 @@ export const schemaListUpdate = async () => {
         // ワイルドカードを含むかどうかで処理を分ける
         if(row.child_s[k].includes('*')){
           const splitedId = row.child_s[k].split('*');
-          const searchId = `${splitedId[0]}[^/]*${splitedId[1]}$`;
+          const searchId = splitedId[0].endsWith('/') && splitedId[1] === '' ? `${splitedId[0]}/*` : `${splitedId[0]}[^/]*${splitedId[1]}$`;
           const schemaIds: schemaId[] = (await dbAccess.query(
             'SELECT schema_id FROM jesgo_document_schema WHERE schema_id_string ~ $1',
             [searchId]
