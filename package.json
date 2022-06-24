@@ -1,6 +1,6 @@
 {
     "name": "jesgo-server",
-    "version": "0.0.8",
+    "version": "1.0.0",
     "keywords": [],
     "author": "",
     "license": "ISC",
@@ -31,13 +31,16 @@
         "build": "npx tsc",
         "lint": "eslint --ext .tsx,.ts backendapp/",
         "fmt": "prettier --write backendapp/**/*",
-        "test": "jest"
+        "test": "jest",
+        "install-service": "winser -i",
+        "uninstall-service": "winser -r -x"
     },
     "dependencies": {
         "cors": "^2.8.5",
         "express": "^4.17.2",
         "helmet": "^5.0.1",
-        "pg": "^8.7.1"
+        "pg": "^8.7.1",
+        "winser": "^1.0.3"
     },
     "devDependencies": {
         "@types/bcrypt": "^5.0.0",
