@@ -29,6 +29,7 @@ name text UNIQUE NOT NULL,
 display_name text,
 password_hash text,
 roll_id integer NOT NULL,
+deleted boolean DEFAULT FALSE,
 FOREIGN KEY(roll_id) REFERENCES jesgo_user_roll(roll_id)
 );
 
@@ -37,17 +38,20 @@ CREATE TABLE IF NOT EXISTS jesgo_case
 case_id serial PRIMARY KEY,
 name text,
 date_of_birth date NOT NULL,
+date_of_death date ,
 sex varchar(1) DEFAULT 'F',
 HIS_id text UNIQUE NOT NULL,
 decline boolean DEFAULT FALSE,
 registrant integer,
 last_updated timestamptz NOT NULL,
+deleted boolean DEFAULT FALSE,
 FOREIGN KEY(sex) REFERENCES jesgo_sex_master(sex_identifier),
 FOREIGN KEY(registrant) REFERENCES jesgo_user(user_id)
 );
 
 CREATE TABLE IF NOT EXISTS jesgo_document_schema
 (
+schema_primary_id serial PRIMARY KEY,
 schema_id integer,
 schema_id_string text,
 title text,
@@ -64,7 +68,8 @@ author text NOT NULL,
 version_major integer NOT NULL,
 version_minor integer NOT NULL,
 plugin_id integer,
-PRIMARY KEY(schema_id, valid_from)
+inherit_schema integer[],
+base_schema integer DEFAULT NULL
 -- TODO★設定テーブル未作成
 -- FOREIGN KEY(plugin_id) REFERENCES jesgo_setting(plugin_id)
 );
@@ -77,11 +82,14 @@ event_date date,
 document JSONB NOT NULL,
 child_documents integer[],
 schema_id integer NOT NULL,
+schema_primary_id integer NOT NULL,
+inherit_schema integer[],
 schema_major_version integer,
 registrant integer,
 last_updated timestamptz NOT NULL,
 readonly boolean DEFAULT FALSE,
 deleted boolean DEFAULT FALSE,
+root_order integer NOT NULL DEFAULT -1,
 FOREIGN KEY(case_id) REFERENCES jesgo_case(case_id),
 -- 配列の中は外部キー制約がきかない
 -- FOREIGN KEY(child_documents) REFERENCES jesgo_document(document_id),
@@ -103,4 +111,10 @@ user_id integer,
 body text,
 created timestamptz NOT NULL,
 FOREIGN KEY(user_id) REFERENCES jesgo_user(user_id)
+);
+
+CREATE TABLE IF NOT EXISTS jesgo_system_setting
+(
+setting_id integer PRIMARY KEY,
+value JSONB NOT NULL
 );

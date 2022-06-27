@@ -15,3 +15,4 @@ INSERT INTO JESGO_USER_ROLL VALUES(1000, '退職者', FALSE, FALSE, FALSE, FALSE
 
 INSERT INTO JESGO_USER VALUES(0, 'log_user', 'システムログ', NULL, 999);
 INSERT INTO JESGO_USER (name, display_name, password_hash, roll_id) VALUES ('systemuser', 'システム管理者', '$2b$10$0Qx93GQH/5QC3wDOdTMjZO18TGtFluTDvSWONjSQFXaUFpFYCFKW6', 0);
+INSERT INTO jesgo_system_setting VALUES(1, '{"setting": {"hisid" : {"alignment": false,"digit": 8,"hyphen_enable" : true,"alphabet_enable" : false},"facility_information":{"name" : "","jsog_registration_number" : "","joed_registration_number" : ""}}}');

@@ -110,5 +110,10 @@ dist
 # トランスパイル後のJSファイル
 *.js
 
-# 暗号鍵
-*.key
+# スキーマファイル
+backendapp/import/*
+backendapp/imported/*
+uploads/*
+
+# ログファイル
+log/*
