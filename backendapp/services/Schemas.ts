@@ -70,6 +70,47 @@ export const getRootSchemaIds = async (): Promise<ApiReturnObject> => {
   }
 };
 
+// 検索用セレクトボックス取得APIのbody 他検索が増えたらプロパティを増やす
+export type searchColumnsFromApi = {
+  cancerTypes: string[];
+};
+
+/**
+ * 検索用のセレクトボックスのデータを取得するAPI
+ * @returns がん種の文字列配列(表示順)を持つオブジェクト
+ */
+export const getSearchColumns = async (): Promise<ApiReturnObject> => {
+  logging(LOGTYPE.DEBUG, `呼び出し`, 'Schemas', 'getSearchColumns');
+
+  type dbRow = {
+    column_name:string
+  };
+
+  try {
+    const dbAccess = new DbAccess();
+    await dbAccess.connectWithConf();
+
+    // 現状ではがん種のみ、必要なら処理を増やす
+    const cancerType: string[] = [];
+    const ret = await dbAccess.query("SELECT column_name FROM jesgo_search_column WHERE column_type ='cancer_type' ORDER BY column_id") as dbRow[];
+    for(let i =0; i < ret.length; i++){
+      cancerType.push(ret[i].column_name);
+    }
+    // ここまで
+
+    await dbAccess.end();
+
+    const searchColumns:searchColumnsFromApi = {
+      cancerTypes: cancerType
+    };
+
+    return { statusNum: RESULT.NORMAL_TERMINATION, body: searchColumns };
+  } catch (e) {
+    logging(LOGTYPE.ERROR, `エラー発生 ${(e as Error).message}`, 'Schemas', 'getSearchColumns');
+    return { statusNum: RESULT.ABNORMAL_TERMINATION, body: [] };
+  }
+}
+
 //
 type jesgoDocumentFromDb = {
   document_id: number;

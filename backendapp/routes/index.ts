@@ -20,12 +20,13 @@ import {
   searchPatientRequest,
   searchPatients,
 } from '../services/SearchPatient';
-import { jsonToSchema, uploadZipFile } from '../services/JsonToDatabase';
+import { uploadZipFile } from '../services/JsonToDatabase';
 import Router from 'express-promise-router';
 import {
   getCaseAndDocument,
   getJsonSchema,
   getRootSchemaIds,
+  getSearchColumns,
   registrationCaseAndDocument,
   SaveDataObjDefine,
 } from '../services/Schemas';
@@ -224,9 +225,18 @@ router.post('/editUser/', async (req, res, next) => {
 
 /**
  * リスト画面用 start
+ * getSearchColumns
  * patientlist
  * deleteCase
  */
+router.get('/getSearchColumns', async (req, res, next) => {
+  logging(LOGTYPE.DEBUG, '呼び出し', 'router', '/getSearchColumns');
+  // ログイン画面でも使用するので権限を設定しない
+  await getSearchColumns()
+  .then((result) => res.status(200).send(result))
+  .catch(next);
+});
+
 router.get('/patientlist', async (req, res, next) => {
   logging(LOGTYPE.DEBUG, '呼び出し', 'router', '/patientlist', getUsernameFromRequest(req));
   // 権限の確認
@@ -354,13 +364,6 @@ router.post('/updateSettings/', async (req, res, next) => {
 /**
  * プラグイン用 start
  */
-router.post('/json2schema/', (req, res, next) => {
-  logging(LOGTYPE.DEBUG, '呼び出し', 'router', '/json2schema');
-  jsonToSchema()
-    .then((result) => res.status(200).send(result))
-    .catch(next);
-});
-
 // eslint-disable-next-line
 router.post('/upload/', upload.single('schemas'), async (req, res, next) => {
   logging(LOGTYPE.DEBUG, '呼び出し', 'router', '/upload', getUsernameFromRequest(req));
