@@ -3,7 +3,7 @@ import { readFileSync, readdirSync, rename, existsSync, mkdirSync } from 'fs';
 import { ApiReturnObject, RESULT } from '../logic/ApiCommon';
 import lodash from 'lodash';
 import { logging, LOGTYPE } from '../logic/Logger';
-import { Extract } from 'unzipper';
+import { Extract, ParseStream } from 'unzipper';
 import * as fs from 'fs';
 import fse from 'fs-extra';
 import * as path from 'path';
@@ -784,12 +784,17 @@ export const jsonToSchema = async ():Promise<ApiReturnObject> => {
     await dbAccess.end();
   }
 };
-
-const sleep = (time:number):Promise<void> => {
-  return new Promise((resolve) => {
-      setTimeout(() => {
-          resolve()
-      }, time)
+const streamPromise = async (stream:ParseStream) => {
+  return new Promise((resolve, reject) => {
+      stream.on('end', () => {
+        resolve('end');
+    });
+    stream.on('finish', () => {
+        resolve('finish');
+    });
+    stream.on('error', (error) => {
+        reject(error);
+    });
   })
 }
 
@@ -803,7 +808,9 @@ export const uploadZipFile = async (data:any):Promise<ApiReturnObject> => {
   try{
     switch (fileType) {
       case '.zip':
-        fs.createReadStream(filePath).pipe( Extract( { path: dirPath } ) );
+        await streamPromise(
+          fs.createReadStream(filePath).pipe( Extract( { path: dirPath } ) )
+          );
         break;
       case '.json':
         if (!fs.existsSync(dirPath)) {
@@ -814,8 +821,6 @@ export const uploadZipFile = async (data:any):Promise<ApiReturnObject> => {
       default:
         throw new Error('.zipファイルか.jsonファイルを指定してください.');
     }
-    
-    await sleep(500);
 
     const listFiles = (dir: string): string[] =>
       readdirSync(dir, { withFileTypes: true }).flatMap((dirent) =>
