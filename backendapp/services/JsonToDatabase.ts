@@ -799,7 +799,7 @@ export const uploadZipFile = async (data:any):Promise<ApiReturnObject> => {
         throw new Error('.zipファイルか.jsonファイルを指定してください.');
     }
     
-    await sleep(5000);
+    await sleep(500);
 
     const listFiles = (dir: string): string[] =>
       readdirSync(dir, { withFileTypes: true }).flatMap((dirent) =>
