@@ -7,6 +7,7 @@ import { Extract } from 'unzipper';
 import * as fs from 'fs';
 import fse from 'fs-extra';
 import * as path from 'path';
+import { Const, escapeText, jesgo_tagging } from '../logic/Utility';
 
 //インターフェース
 
@@ -802,8 +803,8 @@ export const updateSearchColumn = async ():Promise<void> => {
   const dbRows: dbRow[] = (await dbAccess.query(
     `SELECT document_schema 
     FROM view_latest_schema 
-    WHERE document_schema->>'properties' like '%\\"jesgo:tag\\":\\"cancer_major\\"%' 
-    OR document_schema->>'properties' like '%\\"jesgo:tag\\":\\"cancer_minor\\"%' 
+    WHERE document_schema->>'properties' like '%${escapeText(jesgo_tagging(Const.JESGO_TAG.CANCER_MAJOR))}%' 
+    OR document_schema->>'properties' like '%${escapeText(jesgo_tagging(Const.JESGO_TAG.CANCER_MINOR))}%' 
     ORDER BY schema_id_string;`
   )) as dbRow[];
 
@@ -814,9 +815,11 @@ export const updateSearchColumn = async ():Promise<void> => {
 
     for(let i = 0; i < schemaItems.pNames.length; i++) {
       const prop = schemaItems.pItems[schemaItems.pNames[i]] as JSONSchema7;
-      if(prop['jesgo:tag'] && (prop['jesgo:tag'] == 'cancer_major' || prop['jesgo:tag'] == 'cancer_minor')){
+      if(prop['jesgo:tag'] && 
+        (prop['jesgo:tag'] == Const.JESGO_TAG.CANCER_MAJOR || 
+         prop['jesgo:tag'] == Const.JESGO_TAG.CANCER_MINOR)){
         
-        const target = prop['jesgo:tag'] == 'cancer_major' ? majorCancers : minorCancers;
+        const target = prop['jesgo:tag'] == Const.JESGO_TAG.CANCER_MAJOR ? majorCancers : minorCancers;
         if(prop['default']){
           target.push(prop['default'] as string);
         }else if(prop['const']){
