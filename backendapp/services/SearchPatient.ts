@@ -175,7 +175,7 @@ export const searchPatients = async (
     to_char(ca.last_updated, 'yyyy/mm/dd') as last_updated, 
     doc.document as document,  document_schema, 
     doc.child_documents, doc.document_id as document_id, ca.case_id as case_id, doc.deleted as deleted  
-    FROM jesgo_document doc JOIN jesgo_document_schema sch ON doc.schema_id = sch.schema_id RIGHT OUTER JOIN jesgo_case ca ON ca.case_id = doc.case_id
+    FROM jesgo_document doc JOIN view_latest_schema sch ON doc.schema_id = sch.schema_id RIGHT OUTER JOIN jesgo_case ca ON ca.case_id = doc.case_id
     WHERE ca.deleted = false 
     ORDER BY ca.case_id , sch.schema_id_string;`
   )) as dbRow[];
@@ -427,7 +427,7 @@ export const searchPatients = async (
     if (userData.diagnosis === '') {
       userData.diagnosis = '未';
     }
-    if (userData.registration.length === 0) {
+    if (userData.registration.length > 0) {
       // 1つ以上の値がある場合は、「拒否」、「未」、「済」の優先順で一番優先された物を値とする
       const orderRule = [
         'decline',
