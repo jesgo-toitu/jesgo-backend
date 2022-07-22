@@ -2,7 +2,7 @@ import { DbAccess } from '../logic/DbAccess';
 import { ParsedQs } from 'qs';
 import { ApiReturnObject, RESULT } from '../logic/ApiCommon';
 import { logging, LOGTYPE } from '../logic/Logger';
-import { Const, jesgo_tagging } from '../logic/Utility';
+import { Const, isAgoYearFromNow, jesgo_tagging } from '../logic/Utility';
 import { getPropItemsAndNames, getThenPropItemsAndNames, JSONSchema7 } from './JsonToDatabase';
 
 //インターフェース
@@ -352,7 +352,7 @@ export const searchPatients = async (
         JSON.stringify(dbRow.document_schema).includes(jesgo_tagging(Const.JESGO_TAG.TREATMENT_SUPPORTIVECARE)) &&
         getPropertyNameFromTag(Const.JESGO_TAG.TREATMENT_SUPPORTIVECARE, dbRow.document, dbRow.document_schema) !== ''
       ) {
-        iconTag = 'surveillance';
+        iconTag = 'supportivecare';
       }
 
       if (iconTag !== '') {
@@ -409,6 +409,29 @@ export const searchPatients = async (
         }
       }
     }
+
+    // 3年予後と5年予後は該当ドキュメントがあれば値を登録、該当年数がたっていなければ後から値を削除する
+    // 3年予後
+    if (JSON.stringify(dbRow.document_schema).includes(jesgo_tagging(Const.JESGO_TAG.THREE_YEAR_PROGNOSIS)))
+    {
+      const threeYearPrognosis = getPropertyNameFromTag(Const.JESGO_TAG.THREE_YEAR_PROGNOSIS, dbRow.document, dbRow.document_schema);
+      if (threeYearPrognosis !== null && threeYearPrognosis !== '') {
+        userData.threeYearPrognosis.push('completed');
+      }else{
+        userData.threeYearPrognosis.push('not_completed');
+      }
+    }
+
+    // 5年予後
+    if (JSON.stringify(dbRow.document_schema).includes(jesgo_tagging(Const.JESGO_TAG.FIVE_YEAR_PROGNOSIS)))
+    {
+      const fiveYearPrognosis = getPropertyNameFromTag(Const.JESGO_TAG.FIVE_YEAR_PROGNOSIS, dbRow.document, dbRow.document_schema);
+      if (fiveYearPrognosis !== null && fiveYearPrognosis !== '') {
+        userData.fiveYearPrognosis.push('completed');
+      }else{
+        userData.fiveYearPrognosis.push('not_completed');
+      }
+    }
   }
 
   // がん種結合
@@ -421,12 +444,18 @@ export const searchPatients = async (
   for (let index = 0; index < userDataList.length; index++) {
     const userData = userDataList[index];
     const regex = new RegExp(/^[未・]*$/);
+
+    // 進行期
     if (userData.advancedStage === '' || regex.test(userData.advancedStage)) {
       userData.advancedStage = '未';
     }
+
+    // 診断日
     if (userData.diagnosis === '') {
       userData.diagnosis = '未';
     }
+
+    // 登録
     if (userData.registration.length > 0) {
       // 1つ以上の値がある場合は、「拒否」、「未」、「済」の優先順で一番優先された物を値とする
       const orderRule = [
@@ -437,6 +466,25 @@ export const searchPatients = async (
       userData.registration = [userData.registration.sort((a, b) => orderRule.indexOf(a) - orderRule.indexOf(b))[0]];
     }
     // 値がない場合は何も表示しない
+
+    // 3年予後、5年予後
+    if (userData.startDate == null) {
+      // 初回治療日が指定されていない場合は3年予後、5年予後とも未指定とする
+      userData.threeYearPrognosis = [];
+      userData.fiveYearPrognosis = [];
+    }else{
+      // 3年予後
+      if(!isAgoYearFromNow(new Date(userData.startDate), 3)){
+        // 3年たっていなければ未指定とする(たっていればそのまま)
+        userData.threeYearPrognosis = [];
+      }
+
+      // 5年予後
+      if(!isAgoYearFromNow(new Date(userData.startDate), 5)){
+        // 5年たっていなければ未指定とする(たっていればそのまま)
+        userData.fiveYearPrognosis = [];
+      }
+    }
   }
 
   // 初回治療日指定がある場合、初回治療日が異なるものを配列から削除する

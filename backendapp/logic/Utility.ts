@@ -1,3 +1,5 @@
+import { logging, LOGTYPE } from "./Logger";
+
 // eslint-disable-next-line @typescript-eslint/no-namespace
 export namespace Const {
   export const JESGO_TAG = {
@@ -25,4 +27,14 @@ export const jesgo_tagging = (tag:string):string => {
 
 export const escapeText = (text:string):string => {
   return text.replace('"', '\\"');
+}
+
+// 現在日付とN年の差があるかを確認する
+export const isAgoYearFromNow = (date:Date, year:number):boolean => {
+  logging(LOGTYPE.DEBUG, `呼び出し`, 'Utility', 'isAgoYearFromNow');
+  const compareDateMillSec = (new Date()).getTime() - date.getTime();
+  // ミリ秒の差を日数に直す
+  const compareDay = compareDateMillSec / (24 * 60 * 60 * 1000);
+  // N年*365日より差が大きかったらN年以上立ってるものとする
+  return compareDay > year * 365;
 }
