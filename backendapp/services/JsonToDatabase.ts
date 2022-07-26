@@ -8,6 +8,11 @@ import * as fs from 'fs';
 import fse from 'fs-extra';
 import * as path from 'path';
 
+// 定数
+// 一時展開用パス
+const dirPath = './tmp';
+
+
 //インターフェース
 
 /**
@@ -296,6 +301,20 @@ export const undefined2Null = (num: number|undefined): string => {
 };
 
 /**
+ * 一時展開用のディレクトリパスを削除したファイルパスを返す
+ * もともと一時展開用のディレクトリパスが付いていなければファイルパスをそのまま返す
+ * @param tempPath 一時展開用のディレクトリパス
+ * @param filePath ファイルパス
+ * @returns 一時展開用のディレクトリパスを削除したファイルパス
+ */
+export const cutTempPath = (tempPath:string, filePath:string):string => {
+  if(filePath.startsWith(tempPath)){
+    return filePath.slice(tempPath.length);
+  }
+  return filePath;
+}
+
+/**
  * 基底スキーマと継承スキーマのIDを入力に、スキーマ同士の関係にエラーがないかを確認する
  * @param id1 継承スキーマのID
  * @param id2 基底スキーマのID
@@ -415,7 +434,7 @@ const makeInsertQuery = (schemaInfo: oldSchema, json: JSONSchema7, fileName: str
       // 旧スキーマと有効期限開始日が同じか、古い場合はエラー
       if(schemaInfo.valid_from >= newValidFrom){
         logging(LOGTYPE.ERROR, `スキーマ(id=${json.$id as string})の有効期限開始日は登録済のものより新しくしてください。`, 'JsonToDatabase', 'makeInsertQuery');
-        errorMessages.push(`[${fileName}]スキーマ(id=${json.$id as string})の有効期限開始日は登録済のものより新しくしてください。`);
+        errorMessages.push(`[${cutTempPath(dirPath,fileName)}]スキーマ(id=${json.$id as string})の有効期限開始日は登録済のものより新しくしてください。`);
         return [];
       }
       
@@ -446,7 +465,7 @@ const makeInsertQuery = (schemaInfo: oldSchema, json: JSONSchema7, fileName: str
     // 旧スキーマと有効期限開始日が同じか、古い場合はエラー
     if(schemaInfo.valid_from >= newValidFrom){
       logging(LOGTYPE.ERROR, `スキーマ(id=${json.$id as string})の有効期限開始日は登録済のものより新しくしてください。`, 'JsonToDatabase', 'makeInsertQuery');
-      errorMessages.push(`[${fileName}]スキーマ(id=${json.$id as string})の有効期限開始日は登録済のものより新しくしてください。`);
+      errorMessages.push(`[${cutTempPath(dirPath,fileName)}]スキーマ(id=${json.$id as string})の有効期限開始日は登録済のものより新しくしてください。`);
       return [];
     }
 
@@ -479,7 +498,7 @@ const makeInsertQuery = (schemaInfo: oldSchema, json: JSONSchema7, fileName: str
       // 新規登録する物が登録済よりバージョンが低いか同じ場合、エラーを返す
       if(hasVersionUpdateError(schemaInfo.version_major, schemaInfo.version_minor, majorVersion, minorVersion)){
         logging(LOGTYPE.ERROR, `スキーマ(id=${json.$id as string})のバージョンは登録済のものより新しくしてください。`, 'JsonToDatabase', 'makeInsertQuery');
-        errorMessages.push(`[${fileName}]スキーマ(id=${json.$id as string})のバージョンは登録済のものより新しくしてください。`);
+        errorMessages.push(`[${cutTempPath(dirPath,fileName)}]スキーマ(id=${json.$id as string})のバージョンは登録済のものより新しくしてください。`);
         return [];
       }
       
@@ -487,13 +506,13 @@ const makeInsertQuery = (schemaInfo: oldSchema, json: JSONSchema7, fileName: str
     }catch{
       // バージョン形式が正しくない場合もエラーを返す
       logging(LOGTYPE.ERROR, `スキーマ(id=${json.$id as string})のバージョンの形式に不備があります。`, 'JsonToDatabase', 'makeInsertQuery');
-      errorMessages.push(`[${fileName}]スキーマ(id=${json.$id as string})のバージョンの形式に不備があります。`);
+      errorMessages.push(`[${cutTempPath(dirPath,fileName)}]スキーマ(id=${json.$id as string})のバージョンの形式に不備があります。`);
       return [];
     }
   } else {
     // バージョンはNOT NULL
     logging(LOGTYPE.ERROR, `スキーマ(id=${json.$id as string})のバージョンが未記載です。`, 'JsonToDatabase', 'makeInsertQuery');
-    errorMessages.push(`[${fileName}]スキーマ(id=${json.$id as string})のバージョンが未記載です。`);
+    errorMessages.push(`[${cutTempPath(dirPath,fileName)}]スキーマ(id=${json.$id as string})のバージョンが未記載です。`);
     return [];
   }
 
@@ -510,8 +529,8 @@ const fileListInsert = async (fileList: string[], errorMessages: string[]):Promi
   let updateNum = 0;
   for (let i = 0; i < fileList.length; i++) {
     if(!fileList[i].endsWith('.json')){
-      logging(LOGTYPE.ERROR, `[${fileList[i]}]JSONファイル以外のファイルが含まれています。`, 'JsonToDatabase', 'fileListInsert');
-      errorMessages.push(`[${fileList[i]}]JSONファイル以外のファイルが含まれています。`);
+      logging(LOGTYPE.ERROR, `[${cutTempPath(dirPath,fileList[i])}]JSONファイル以外のファイルが含まれています。`, 'JsonToDatabase', 'fileListInsert');
+      errorMessages.push(`[${cutTempPath(dirPath,fileList[i])}]JSONファイル以外のファイルが含まれています。`);
       continue;
     }
     let json: JSONSchema7 = {};
@@ -520,8 +539,8 @@ const fileListInsert = async (fileList: string[], errorMessages: string[]):Promi
         readFileSync(fileList[i], 'utf8')
       ) as JSONSchema7;
     }catch{
-      logging(LOGTYPE.ERROR, `[${fileList[i]}]JSON形式が正しくないファイルが含まれています。`, 'JsonToDatabase', 'fileListInsert');
-      errorMessages.push(`[${fileList[i]}]JSON形式が正しくないファイルが含まれています。`)
+      logging(LOGTYPE.ERROR, `[${cutTempPath(dirPath,fileList[i])}]JSON形式が正しくないファイルが含まれています。`, 'JsonToDatabase', 'fileListInsert');
+      errorMessages.push(`[${cutTempPath(dirPath,fileList[i])}]JSON形式が正しくないファイルが含まれています。`)
       continue;
     }
 
@@ -778,7 +797,6 @@ const sleep = (time:number):Promise<void> => {
 
 export const uploadZipFile = async (data:any):Promise<ApiReturnObject> => {
   logging(LOGTYPE.DEBUG, '呼び出し', 'JsonToDatabase', 'uploadZipFile');
-  const dirPath = './tmp';
   // eslint-disable-next-line
   const filePath:string = data.path;
   const errorMessages:string[] = [];
@@ -793,7 +811,7 @@ export const uploadZipFile = async (data:any):Promise<ApiReturnObject> => {
         if (!fs.existsSync(dirPath)) {
           fs.mkdirSync(dirPath);
         }
-        fs.copyFileSync(filePath, path.join(dirPath, 'uploaded.json'));
+        fs.copyFileSync(filePath, path.join(dirPath, data.originalname));
         break;
       default:
         throw new Error('.zipファイルか.jsonファイルを指定してください.');
