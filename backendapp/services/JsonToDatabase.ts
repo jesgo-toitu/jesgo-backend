@@ -408,8 +408,23 @@ const hasVersionUpdateError = (baseMajor:number, baseMinor:number, updateMajor:n
 
 const makeInsertQuery = (schemaInfo: oldSchema, json: JSONSchema7, fileName: string, errorMessages: string[]): string[] => {
   logging(LOGTYPE.DEBUG, `呼び出し`, 'JsonToDatabase', 'makeInsertQuery');
+  let schemaIdString:string = json.$id ?? '';
+  const title:string = json.title ?? '';
+  let errorFlag = false;
   let subQuery = '';
-  const titles: string[] = (json.title as string).split(' ', 2);
+  if(schemaIdString === ''){
+    logging(LOGTYPE.ERROR, `[${cutTempPath(dirPath,fileName)}]スキーマIDが未指定です。`, 'JsonToDatabase', 'makeInsertQuery');
+    errorMessages.push(`[${cutTempPath(dirPath,fileName)}]スキーマIDが未指定です。`);
+    schemaIdString = '未指定'
+    errorFlag = true;
+  }
+
+  if(title === ''){
+    logging(LOGTYPE.ERROR, `スキーマ(id=${schemaIdString})のタイトルを設定してください。`, 'JsonToDatabase', 'makeInsertQuery');
+    errorMessages.push(`[${cutTempPath(dirPath,fileName)}]スキーマ(id=${schemaIdString})のタイトルを設定してください。`);
+    errorFlag = true;
+  }
+  const titles: string[] = title.split(' ', 2)?? ['',''];
   let subtitle = '';
   if (titles.length > 1) {
     subtitle = titles[1];
@@ -417,7 +432,7 @@ const makeInsertQuery = (schemaInfo: oldSchema, json: JSONSchema7, fileName: str
   // INSERT
   let query =
     'INSERT INTO jesgo_document_schema (schema_id, schema_id_string, title, subtitle, document_schema';
-  let value = `${schemaInfo.schema_id}, '${json.$id as string}', '${
+  let value = `${schemaInfo.schema_id}, '${schemaIdString}', '${
     titles[0]
   }', '${subtitle}', '${JSON.stringify(json)}'`;
   if (json['jesgo:unique'] != null) {
@@ -433,18 +448,18 @@ const makeInsertQuery = (schemaInfo: oldSchema, json: JSONSchema7, fileName: str
       const newValidFrom = new Date(json['jesgo:valid'][0])
       // 旧スキーマと有効期限開始日が同じか、古い場合はエラー
       if(schemaInfo.valid_from >= newValidFrom){
-        logging(LOGTYPE.ERROR, `スキーマ(id=${json.$id as string})の有効期限開始日は登録済のものより新しくしてください。`, 'JsonToDatabase', 'makeInsertQuery');
-        errorMessages.push(`[${cutTempPath(dirPath,fileName)}]スキーマ(id=${json.$id as string})の有効期限開始日は登録済のものより新しくしてください。`);
-        return [];
-      }
-      
-      // 旧スキーマに有効期限終了日が設定されていないか、新スキーマの有効期限開始日以降であれば
-      // 旧スキーマの有効期限終了日を新スキーマの有効期限開始日前日に設定する
-      if(schemaInfo.valid_until === null || schemaInfo.valid_until >= newValidFrom){
-        // schema_primary_idが-1であれば旧スキーマが存在しないので対応しない
-        if(schemaInfo.schema_primary_id !== -1){
-          logging(LOGTYPE.DEBUG, `スキーマ(id=${json.$id as string}, Pid=${schemaInfo.schema_primary_id})の有効期限終了日を更新`, 'JsonToDatabase', 'makeInsertQuery');
-          subQuery = `UPDATE jesgo_document_schema SET valid_until = '${formatDate(getPreviousDay(newValidFrom), '-')}' WHERE schema_primary_id = ${schemaInfo.schema_primary_id}`
+        logging(LOGTYPE.ERROR, `スキーマ(id=${schemaIdString})の有効期限開始日は登録済のものより新しくしてください。`, 'JsonToDatabase', 'makeInsertQuery');
+        errorMessages.push(`[${cutTempPath(dirPath,fileName)}]スキーマ(id=${schemaIdString})の有効期限開始日は登録済のものより新しくしてください。`);
+        errorFlag = true;
+      }else{
+        // 旧スキーマに有効期限終了日が設定されていないか、新スキーマの有効期限開始日以降であれば
+        // 旧スキーマの有効期限終了日を新スキーマの有効期限開始日前日に設定する
+        if(schemaInfo.valid_until === null || schemaInfo.valid_until >= newValidFrom){
+          // schema_primary_idが-1であれば旧スキーマが存在しないので対応しない
+          if(schemaInfo.schema_primary_id !== -1){
+            logging(LOGTYPE.DEBUG, `スキーマ(id=${schemaIdString}, Pid=${schemaInfo.schema_primary_id})の有効期限終了日を更新`, 'JsonToDatabase', 'makeInsertQuery');
+            subQuery = `UPDATE jesgo_document_schema SET valid_until = '${formatDate(getPreviousDay(newValidFrom), '-')}' WHERE schema_primary_id = ${schemaInfo.schema_primary_id}`
+          }
         }
       }
     }
@@ -464,18 +479,18 @@ const makeInsertQuery = (schemaInfo: oldSchema, json: JSONSchema7, fileName: str
 
     // 旧スキーマと有効期限開始日が同じか、古い場合はエラー
     if(schemaInfo.valid_from >= newValidFrom){
-      logging(LOGTYPE.ERROR, `スキーマ(id=${json.$id as string})の有効期限開始日は登録済のものより新しくしてください。`, 'JsonToDatabase', 'makeInsertQuery');
-      errorMessages.push(`[${cutTempPath(dirPath,fileName)}]スキーマ(id=${json.$id as string})の有効期限開始日は登録済のものより新しくしてください。`);
-      return [];
-    }
-
-    // 旧スキーマに有効期限終了日が設定されていないか、新スキーマの有効期限開始日以降であれば
-    // 旧スキーマの有効期限終了日を新スキーマの有効期限開始日前日に設定する
-    if(schemaInfo.valid_until === null || schemaInfo.valid_until >= newValidFrom){
-      // schema_primary_idが-1であれば旧スキーマが存在しないので対応しない
-      if(schemaInfo.schema_primary_id !== -1){
-        logging(LOGTYPE.DEBUG, `スキーマ(id=${json.$id as string}, Pid=${schemaInfo.schema_primary_id})の有効期限終了日を更新`, 'JsonToDatabase', 'makeInsertQuery');
-        subQuery = `UPDATE jesgo_document_schema SET valid_until = '${formatDate(getPreviousDay(newValidFrom), '-')}' WHERE schema_primary_id = ${schemaInfo.schema_primary_id}`
+      logging(LOGTYPE.ERROR, `スキーマ(id=${schemaIdString})の有効期限開始日は登録済のものより新しくしてください。`, 'JsonToDatabase', 'makeInsertQuery');
+      errorMessages.push(`[${cutTempPath(dirPath,fileName)}]スキーマ(id=${schemaIdString})の有効期限開始日は登録済のものより新しくしてください。`);
+      errorFlag = true;
+    }else{
+      // 旧スキーマに有効期限終了日が設定されていないか、新スキーマの有効期限開始日以降であれば
+      // 旧スキーマの有効期限終了日を新スキーマの有効期限開始日前日に設定する
+      if(schemaInfo.valid_until === null || schemaInfo.valid_until >= newValidFrom){
+        // schema_primary_idが-1であれば旧スキーマが存在しないので対応しない
+        if(schemaInfo.schema_primary_id !== -1){
+          logging(LOGTYPE.DEBUG, `スキーマ(id=${schemaIdString}, Pid=${schemaInfo.schema_primary_id})の有効期限終了日を更新`, 'JsonToDatabase', 'makeInsertQuery');
+          subQuery = `UPDATE jesgo_document_schema SET valid_until = '${formatDate(getPreviousDay(newValidFrom), '-')}' WHERE schema_primary_id = ${schemaInfo.schema_primary_id}`
+        }
       }
     }
   }
@@ -497,23 +512,23 @@ const makeInsertQuery = (schemaInfo: oldSchema, json: JSONSchema7, fileName: str
       
       // 新規登録する物が登録済よりバージョンが低いか同じ場合、エラーを返す
       if(hasVersionUpdateError(schemaInfo.version_major, schemaInfo.version_minor, majorVersion, minorVersion)){
-        logging(LOGTYPE.ERROR, `スキーマ(id=${json.$id as string})のバージョンは登録済のものより新しくしてください。`, 'JsonToDatabase', 'makeInsertQuery');
-        errorMessages.push(`[${cutTempPath(dirPath,fileName)}]スキーマ(id=${json.$id as string})のバージョンは登録済のものより新しくしてください。`);
-        return [];
+        logging(LOGTYPE.ERROR, `スキーマ(id=${schemaIdString})のバージョンは登録済のものより新しくしてください。`, 'JsonToDatabase', 'makeInsertQuery');
+        errorMessages.push(`[${cutTempPath(dirPath,fileName)}]スキーマ(id=${schemaIdString})のバージョンは登録済のものより新しくしてください。`);
+        errorFlag = true;
       }
       
       value += `, ${majorVersion}, ${minorVersion}`;
     }catch{
       // バージョン形式が正しくない場合もエラーを返す
-      logging(LOGTYPE.ERROR, `スキーマ(id=${json.$id as string})のバージョンの形式に不備があります。`, 'JsonToDatabase', 'makeInsertQuery');
-      errorMessages.push(`[${cutTempPath(dirPath,fileName)}]スキーマ(id=${json.$id as string})のバージョンの形式に不備があります。`);
-      return [];
+      logging(LOGTYPE.ERROR, `スキーマ(id=${schemaIdString})のバージョンの形式に不備があります。`, 'JsonToDatabase', 'makeInsertQuery');
+      errorMessages.push(`[${cutTempPath(dirPath,fileName)}]スキーマ(id=${schemaIdString})のバージョンの形式に不備があります。`);
+      errorFlag = true;
     }
   } else {
     // バージョンはNOT NULL
-    logging(LOGTYPE.ERROR, `スキーマ(id=${json.$id as string})のバージョンが未記載です。`, 'JsonToDatabase', 'makeInsertQuery');
-    errorMessages.push(`[${cutTempPath(dirPath,fileName)}]スキーマ(id=${json.$id as string})のバージョンが未記載です。`);
-    return [];
+    logging(LOGTYPE.ERROR, `スキーマ(id=${schemaIdString})のバージョンが未記載です。`, 'JsonToDatabase', 'makeInsertQuery');
+    errorMessages.push(`[${cutTempPath(dirPath,fileName)}]スキーマ(id=${schemaIdString})のバージョンが未記載です。`);
+    errorFlag = true;
   }
 
   query += ', plugin_id';
@@ -521,6 +536,10 @@ const makeInsertQuery = (schemaInfo: oldSchema, json: JSONSchema7, fileName: str
 
   query += `) VALUES (${value})`;
 
+  // 一つでもエラーが出ていたらクエリは返さない
+  if(errorFlag){
+    return [];
+  }
   return [query, subQuery];
 };
 
