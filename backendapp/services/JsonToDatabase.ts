@@ -8,6 +8,11 @@ import * as fs from 'fs';
 import fse from 'fs-extra';
 import * as path from 'path';
 
+// 定数
+// 一時展開用パス
+const dirPath = './tmp';
+
+
 //インターフェース
 
 /**
@@ -296,6 +301,20 @@ export const undefined2Null = (num: number|undefined): string => {
 };
 
 /**
+ * 一時展開用のディレクトリパスを削除したファイルパスを返す
+ * もともと一時展開用のディレクトリパスが付いていなければファイルパスをそのまま返す
+ * @param tempPath 一時展開用のディレクトリパス
+ * @param filePath ファイルパス
+ * @returns 一時展開用のディレクトリパスを削除したファイルパス
+ */
+export const cutTempPath = (tempPath:string, filePath:string):string => {
+  if(filePath.startsWith(tempPath)){
+    return filePath.slice(tempPath.length);
+  }
+  return filePath;
+}
+
+/**
  * 基底スキーマと継承スキーマのIDを入力に、スキーマ同士の関係にエラーがないかを確認する
  * @param id1 継承スキーマのID
  * @param id2 基底スキーマのID
@@ -387,10 +406,25 @@ const hasVersionUpdateError = (baseMajor:number, baseMinor:number, updateMajor:n
   return false;
 }
 
-const makeInsertQuery = (schemaInfo: oldSchema, json: JSONSchema7): string[] => {
+const makeInsertQuery = (schemaInfo: oldSchema, json: JSONSchema7, fileName: string, errorMessages: string[]): string[] => {
   logging(LOGTYPE.DEBUG, `呼び出し`, 'JsonToDatabase', 'makeInsertQuery');
+  let schemaIdString:string = json.$id ?? '';
+  const title:string = json.title ?? '';
+  let errorFlag = false;
   let subQuery = '';
-  const titles: string[] = (json.title as string).split(' ', 2);
+  if(schemaIdString === ''){
+    logging(LOGTYPE.ERROR, `[${cutTempPath(dirPath,fileName)}]スキーマIDが未指定です。`, 'JsonToDatabase', 'makeInsertQuery');
+    errorMessages.push(`[${cutTempPath(dirPath,fileName)}]スキーマIDが未指定です。`);
+    schemaIdString = '未指定'
+    errorFlag = true;
+  }
+
+  if(title === ''){
+    logging(LOGTYPE.ERROR, `スキーマ(id=${schemaIdString})のタイトルを設定してください。`, 'JsonToDatabase', 'makeInsertQuery');
+    errorMessages.push(`[${cutTempPath(dirPath,fileName)}]スキーマ(id=${schemaIdString})のタイトルを設定してください。`);
+    errorFlag = true;
+  }
+  const titles: string[] = title.split(' ', 2)?? ['',''];
   let subtitle = '';
   if (titles.length > 1) {
     subtitle = titles[1];
@@ -398,7 +432,7 @@ const makeInsertQuery = (schemaInfo: oldSchema, json: JSONSchema7): string[] => 
   // INSERT
   let query =
     'INSERT INTO jesgo_document_schema (schema_id, schema_id_string, title, subtitle, document_schema';
-  let value = `${schemaInfo.schema_id}, '${json.$id as string}', '${
+  let value = `${schemaInfo.schema_id}, '${schemaIdString}', '${
     titles[0]
   }', '${subtitle}', '${JSON.stringify(json)}'`;
   if (json['jesgo:unique'] != null) {
@@ -414,17 +448,18 @@ const makeInsertQuery = (schemaInfo: oldSchema, json: JSONSchema7): string[] => 
       const newValidFrom = new Date(json['jesgo:valid'][0])
       // 旧スキーマと有効期限開始日が同じか、古い場合はエラー
       if(schemaInfo.valid_from >= newValidFrom){
-        logging(LOGTYPE.ERROR, `スキーマ(id=${json.$id as string})の有効期限開始日は登録済のものより新しくしてください。`, 'JsonToDatabase', 'makeInsertQuery');
-        throw Error(`スキーマ(id=${json.$id as string})の有効期限開始日は登録済のものより新しくしてください。`);
-      }
-      
-      // 旧スキーマに有効期限終了日が設定されていないか、新スキーマの有効期限開始日以降であれば
-      // 旧スキーマの有効期限終了日を新スキーマの有効期限開始日前日に設定する
-      if(schemaInfo.valid_until === null || schemaInfo.valid_until >= newValidFrom){
-        // schema_primary_idが-1であれば旧スキーマが存在しないので対応しない
-        if(schemaInfo.schema_primary_id !== -1){
-          logging(LOGTYPE.DEBUG, `スキーマ(id=${json.$id as string}, Pid=${schemaInfo.schema_primary_id})の有効期限終了日を更新`, 'JsonToDatabase', 'makeInsertQuery');
-          subQuery = `UPDATE jesgo_document_schema SET valid_until = '${formatDate(getPreviousDay(newValidFrom), '-')}' WHERE schema_primary_id = ${schemaInfo.schema_primary_id}`
+        logging(LOGTYPE.ERROR, `スキーマ(id=${schemaIdString})の有効期限開始日は登録済のものより新しくしてください。`, 'JsonToDatabase', 'makeInsertQuery');
+        errorMessages.push(`[${cutTempPath(dirPath,fileName)}]スキーマ(id=${schemaIdString})の有効期限開始日は登録済のものより新しくしてください。`);
+        errorFlag = true;
+      }else{
+        // 旧スキーマに有効期限終了日が設定されていないか、新スキーマの有効期限開始日以降であれば
+        // 旧スキーマの有効期限終了日を新スキーマの有効期限開始日前日に設定する
+        if(schemaInfo.valid_until === null || schemaInfo.valid_until >= newValidFrom){
+          // schema_primary_idが-1であれば旧スキーマが存在しないので対応しない
+          if(schemaInfo.schema_primary_id !== -1){
+            logging(LOGTYPE.DEBUG, `スキーマ(id=${schemaIdString}, Pid=${schemaInfo.schema_primary_id})の有効期限終了日を更新`, 'JsonToDatabase', 'makeInsertQuery');
+            subQuery = `UPDATE jesgo_document_schema SET valid_until = '${formatDate(getPreviousDay(newValidFrom), '-')}' WHERE schema_primary_id = ${schemaInfo.schema_primary_id}`
+          }
         }
       }
     }
@@ -444,17 +479,18 @@ const makeInsertQuery = (schemaInfo: oldSchema, json: JSONSchema7): string[] => 
 
     // 旧スキーマと有効期限開始日が同じか、古い場合はエラー
     if(schemaInfo.valid_from >= newValidFrom){
-      logging(LOGTYPE.ERROR, `スキーマ(id=${json.$id as string})の有効期限開始日は登録済のものより新しくしてください。`, 'JsonToDatabase', 'makeInsertQuery');
-      throw Error(`スキーマ(id=${json.$id as string})の有効期限開始日は登録済のものより新しくしてください。`);
-    }
-
-    // 旧スキーマに有効期限終了日が設定されていないか、新スキーマの有効期限開始日以降であれば
-    // 旧スキーマの有効期限終了日を新スキーマの有効期限開始日前日に設定する
-    if(schemaInfo.valid_until === null || schemaInfo.valid_until >= newValidFrom){
-      // schema_primary_idが-1であれば旧スキーマが存在しないので対応しない
-      if(schemaInfo.schema_primary_id !== -1){
-        logging(LOGTYPE.DEBUG, `スキーマ(id=${json.$id as string}, Pid=${schemaInfo.schema_primary_id})の有効期限終了日を更新`, 'JsonToDatabase', 'makeInsertQuery');
-        subQuery = `UPDATE jesgo_document_schema SET valid_until = '${formatDate(getPreviousDay(newValidFrom), '-')}' WHERE schema_primary_id = ${schemaInfo.schema_primary_id}`
+      logging(LOGTYPE.ERROR, `スキーマ(id=${schemaIdString})の有効期限開始日は登録済のものより新しくしてください。`, 'JsonToDatabase', 'makeInsertQuery');
+      errorMessages.push(`[${cutTempPath(dirPath,fileName)}]スキーマ(id=${schemaIdString})の有効期限開始日は登録済のものより新しくしてください。`);
+      errorFlag = true;
+    }else{
+      // 旧スキーマに有効期限終了日が設定されていないか、新スキーマの有効期限開始日以降であれば
+      // 旧スキーマの有効期限終了日を新スキーマの有効期限開始日前日に設定する
+      if(schemaInfo.valid_until === null || schemaInfo.valid_until >= newValidFrom){
+        // schema_primary_idが-1であれば旧スキーマが存在しないので対応しない
+        if(schemaInfo.schema_primary_id !== -1){
+          logging(LOGTYPE.DEBUG, `スキーマ(id=${schemaIdString}, Pid=${schemaInfo.schema_primary_id})の有効期限終了日を更新`, 'JsonToDatabase', 'makeInsertQuery');
+          subQuery = `UPDATE jesgo_document_schema SET valid_until = '${formatDate(getPreviousDay(newValidFrom), '-')}' WHERE schema_primary_id = ${schemaInfo.schema_primary_id}`
+        }
       }
     }
   }
@@ -476,20 +512,23 @@ const makeInsertQuery = (schemaInfo: oldSchema, json: JSONSchema7): string[] => 
       
       // 新規登録する物が登録済よりバージョンが低いか同じ場合、エラーを返す
       if(hasVersionUpdateError(schemaInfo.version_major, schemaInfo.version_minor, majorVersion, minorVersion)){
-        logging(LOGTYPE.ERROR, `スキーマ(id=${json.$id as string})のバージョンは登録済のものより新しくしてください。`, 'JsonToDatabase', 'makeInsertQuery');
-        throw Error(`スキーマ(id=${json.$id as string})のバージョンは登録済のものより新しくしてください。`);
+        logging(LOGTYPE.ERROR, `スキーマ(id=${schemaIdString})のバージョンは登録済のものより新しくしてください。`, 'JsonToDatabase', 'makeInsertQuery');
+        errorMessages.push(`[${cutTempPath(dirPath,fileName)}]スキーマ(id=${schemaIdString})のバージョンは登録済のものより新しくしてください。`);
+        errorFlag = true;
       }
       
       value += `, ${majorVersion}, ${minorVersion}`;
     }catch{
       // バージョン形式が正しくない場合もエラーを返す
-      logging(LOGTYPE.ERROR, `スキーマ(id=${json.$id as string})のバージョンの形式に不備があります。`, 'JsonToDatabase', 'makeInsertQuery');
-      throw Error(`スキーマ(id=${json.$id as string})のバージョンの形式に不備があります。`);
+      logging(LOGTYPE.ERROR, `スキーマ(id=${schemaIdString})のバージョンの形式に不備があります。`, 'JsonToDatabase', 'makeInsertQuery');
+      errorMessages.push(`[${cutTempPath(dirPath,fileName)}]スキーマ(id=${schemaIdString})のバージョンの形式に不備があります。`);
+      errorFlag = true;
     }
   } else {
     // バージョンはNOT NULL
-    logging(LOGTYPE.ERROR, `スキーマ(id=${json.$id as string})のバージョンが未記載です。`, 'JsonToDatabase', 'makeInsertQuery');
-    throw Error(`スキーマ(id=${json.$id as string})のバージョンが未記載です。`);
+    logging(LOGTYPE.ERROR, `スキーマ(id=${schemaIdString})のバージョンが未記載です。`, 'JsonToDatabase', 'makeInsertQuery');
+    errorMessages.push(`[${cutTempPath(dirPath,fileName)}]スキーマ(id=${schemaIdString})のバージョンが未記載です。`);
+    errorFlag = true;
   }
 
   query += ', plugin_id';
@@ -497,43 +536,21 @@ const makeInsertQuery = (schemaInfo: oldSchema, json: JSONSchema7): string[] => 
 
   query += `) VALUES (${value})`;
 
+  // 一つでもエラーが出ていたらクエリは返さない
+  if(errorFlag){
+    return [];
+  }
   return [query, subQuery];
 };
 
-const moveFile = (filePath: string) => {
-  logging(LOGTYPE.DEBUG, `呼び出し`, 'JsonToDatabase', 'moveFile');
-  const migratePath: string = filePath.replace(
-    'backendapp/import',
-    'backendapp/imported'
-  );
-  const migratePathDivided: string[] = migratePath.split('/');
-  migratePathDivided.pop();
-
-  // 配列の[0],[1]はそれぞれ固定パス部分なので省略
-  for (let i = 2; i < migratePathDivided.length; i++) {
-    let dirPath = '';
-    for (let j = 0; j <= i; j++) {
-      dirPath += `${migratePathDivided[j]}/`;
-    }
-    if (!existsSync(dirPath)) {
-      mkdirSync(dirPath);
-
-      logging(LOGTYPE.INFO, `新規ディレクトリ作成`, 'JsonToDatabase', 'moveFile');
-    }
-  }
-  rename(filePath, migratePath, (err) => {
-    if (err) {
-      logging(LOGTYPE.ERROR, `エラー発生 ${err.message}`, 'JsonToDatabase', 'moveFile');
-    }
-  });
-};
-
-const fileListInsert = async (fileList: string[]) => {
+const fileListInsert = async (fileList: string[], errorMessages: string[]):Promise<number> => {
   logging(LOGTYPE.DEBUG, `呼び出し`, 'JsonToDatabase', 'fileListInsert');
+  let updateNum = 0;
   for (let i = 0; i < fileList.length; i++) {
     if(!fileList[i].endsWith('.json')){
-      logging(LOGTYPE.ERROR, `JSONファイル以外のファイルが含まれています。`, 'JsonToDatabase', 'fileListInsert');
-      throw Error(`JSONファイル以外のファイルが含まれています。`);
+      logging(LOGTYPE.ERROR, `[${cutTempPath(dirPath,fileList[i])}]JSONファイル以外のファイルが含まれています。`, 'JsonToDatabase', 'fileListInsert');
+      errorMessages.push(`[${cutTempPath(dirPath,fileList[i])}]JSONファイル以外のファイルが含まれています。`);
+      continue;
     }
     let json: JSONSchema7 = {};
     try{
@@ -541,28 +558,32 @@ const fileListInsert = async (fileList: string[]) => {
         readFileSync(fileList[i], 'utf8')
       ) as JSONSchema7;
     }catch{
-      logging(LOGTYPE.ERROR, `JSON形式が正しくないファイルが含まれています。`, 'JsonToDatabase', 'fileListInsert');
-      throw Error(`JSON形式が正しくないファイルが含まれています。`);
+      logging(LOGTYPE.ERROR, `[${cutTempPath(dirPath,fileList[i])}]JSON形式が正しくないファイルが含まれています。`, 'JsonToDatabase', 'fileListInsert');
+      errorMessages.push(`[${cutTempPath(dirPath,fileList[i])}]JSON形式が正しくないファイルが含まれています。`)
+      continue;
     }
 
 
     // Insert用IDを含む旧データの取得
     const oldJsonData = await getOldSchema(json.$id as string);
 
-    const queries = makeInsertQuery(oldJsonData, json);
-    await dbAccess.query(queries[0]);
-    if(queries[1] !== ''){
-      // 旧スキーマの有効期限更新がある場合そちらも行う
-      await dbAccess.query(queries[1]);
+    const queries = makeInsertQuery(oldJsonData, json, fileList[i], errorMessages);
+    if(queries.length > 0){
+      await dbAccess.query(queries[0]);
+      if(queries[1] !== ''){
+        // 旧スキーマの有効期限更新がある場合そちらも行う
+        await dbAccess.query(queries[1]);
+      }
+      updateNum++;
     }
-    // moveFile(fileList[i]);
   }
+  return updateNum;
 };
 
 /**
  * DBに登録されているスキーマのsubschema, childschema情報をアップデートする
  */
-export const schemaListUpdate = async () => {
+export const schemaListUpdate = async (errorMessages: string[]) => {
   logging(LOGTYPE.DEBUG, `呼び出し`, 'JsonToDatabase', 'schemaListUpdate');
 
   // 先に「子スキーマから指定した親スキーマの関係リスト」を逆にしたものを作成しておく
@@ -727,10 +748,10 @@ export const schemaListUpdate = async () => {
       baseSchemaId = baseSchema?.schema_id;
 
       if(baseSchema){
-        // 基底スキーマと継承スキーマの間でuniqueの設定値が異なる場合、エラーを出してロールバックする
+        // 基底スキーマと継承スキーマの間でuniqueの設定値が異なる場合、エラーを出す
         if(await hasInheritError(row.schema_id, baseSchema.schema_id)){
           logging(LOGTYPE.ERROR, `継承スキーマ(id=${row.schema_id_string})、基底スキーマ(id=${baseSchema.schema_id_string})の間でunique設定が異なります`, 'JsonToDatabase', 'schemaListUpdate');
-          throw Error(`継承スキーマ(id=${row.schema_id_string})、基底スキーマ(id=${baseSchema.schema_id_string})の間でunique設定が異なります。`);
+          errorMessages.push(`継承スキーマ(id=${row.schema_id_string})、基底スキーマ(id=${baseSchema.schema_id_string})の間でunique設定が異なります。`);
         }
       }
     }
@@ -770,9 +791,9 @@ export const jsonToSchema = async ():Promise<ApiReturnObject> => {
     await dbAccess.connectWithConf();
     await dbAccess.query('BEGIN')
 
-    await fileListInsert(fileList);
+    await fileListInsert(fileList, []);
 
-    await schemaListUpdate();
+    await schemaListUpdate([]);
 
     await dbAccess.query('COMMIT');
     return { statusNum: RESULT.NORMAL_TERMINATION, body: null };
@@ -800,9 +821,9 @@ const streamPromise = async (stream:ParseStream) => {
 
 export const uploadZipFile = async (data:any):Promise<ApiReturnObject> => {
   logging(LOGTYPE.DEBUG, '呼び出し', 'JsonToDatabase', 'uploadZipFile');
-  const dirPath = './tmp';
   // eslint-disable-next-line
   const filePath:string = data.path;
+  const errorMessages:string[] = [];
   let fileType:string = path.extname(data.originalname).toLowerCase();
   // eslint-disable-next-line
   try{
@@ -816,7 +837,7 @@ export const uploadZipFile = async (data:any):Promise<ApiReturnObject> => {
         if (!fs.existsSync(dirPath)) {
           fs.mkdirSync(dirPath);
         }
-        fs.copyFileSync(filePath, path.join(dirPath, 'uploaded.json'));
+        fs.copyFileSync(filePath, path.join(dirPath, data.originalname));
         break;
       default:
         throw new Error('.zipファイルか.jsonファイルを指定してください.');
@@ -834,28 +855,29 @@ export const uploadZipFile = async (data:any):Promise<ApiReturnObject> => {
       fileList = listFiles(dirPath);
     }catch{
       logging(LOGTYPE.ERROR, `展開に失敗したか、ファイルの内容がありません。`, 'JsonToDatabase', 'uploadZipFile');
-      return { statusNum: RESULT.ABNORMAL_TERMINATION, body: null };
+      return { statusNum: RESULT.ABNORMAL_TERMINATION, body: {number:0, message:['展開に失敗したか、ファイルの内容がありません。']} };
     }
 
 
     await dbAccess.connectWithConf();
-    await dbAccess.query('BEGIN')
 
-    await fileListInsert(fileList);
+    const updateNum = await fileListInsert(fileList, errorMessages);
 
-    await schemaListUpdate();
+    // スキーマが1件以上新規登録、更新された場合のみ関係性のアップデートを行う
+    if(updateNum > 0){
+      await schemaListUpdate(errorMessages);
+    }
 
-    await dbAccess.query('COMMIT');
-    return { statusNum: RESULT.NORMAL_TERMINATION, body: null };
+
+    return { statusNum: RESULT.NORMAL_TERMINATION, body: {number:updateNum, message:errorMessages} };
   } catch(e){
     if(dbAccess.connected){
       await dbAccess.query('ROLLBACK');
     }
-    let message = '';
     if((e as Error).message.length > 0){
-      message = (e as Error).message;
+      logging(LOGTYPE.ERROR, (e as Error).message, 'JsonToDatabase', 'uploadZipFile');
     }
-    return { statusNum: RESULT.ABNORMAL_TERMINATION, body: message };
+    return { statusNum: RESULT.ABNORMAL_TERMINATION, body: {number:0, message:errorMessages} };
   }finally{
     await dbAccess.end();
     try{
