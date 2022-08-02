@@ -26,6 +26,7 @@ import {
   getCaseAndDocument,
   getJsonSchema,
   getRootSchemaIds,
+  getSchemaTree,
   registrationCaseAndDocument,
   SaveDataObjDefine,
 } from '../services/Schemas';
@@ -378,6 +379,27 @@ router.post('/upload/', upload.single('schemas'), async (req, res, next) => {
   // 権限が無い場合
   else {
     logging(LOGTYPE.ERROR, '権限エラー', 'router', '/upload', getUsernameFromRequest(req));
+  }
+
+});
+
+// eslint-disable-next-line
+router.get('/gettree/', async (req, res, next) => {
+  logging(LOGTYPE.DEBUG, '呼び出し', 'router', '/gettree', getUsernameFromRequest(req));
+  // 権限の確認
+  const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.systemManage);
+  if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
+    res.status(200).send(authResult);
+  }
+  if (authResult.body) {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    getSchemaTree()
+    .then((result) => res.status(200).send(result))
+    .catch(next);
+  }
+  // 権限が無い場合
+  else {
+    logging(LOGTYPE.ERROR, '権限エラー', 'router', '/gettree', getUsernameFromRequest(req));
   }
 
 });
