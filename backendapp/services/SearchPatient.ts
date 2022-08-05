@@ -202,6 +202,7 @@ export const searchPatients = async (
   const caseIdList: number[] = [];
   for (let index = 0; index < dbRows.length; index++) {
     const dbRow: dbRow = dbRows[index];
+    const docSchema = JSON.stringify(dbRow.document_schema);
     const caseId: number = dbRow.case_id;
     let rowIndex = caseIdList.indexOf(caseId);
     let userData: userData;
@@ -264,7 +265,7 @@ export const searchPatients = async (
     }
     jesgo_tagging(Const.JESGO_TAG.CANCER_MAJOR)
     // 主要がん種系
-    if (JSON.stringify(dbRow.document_schema).includes(jesgo_tagging(Const.JESGO_TAG.CANCER_MAJOR)))
+    if (docSchema.includes(jesgo_tagging(Const.JESGO_TAG.CANCER_MAJOR)))
     {
       const cancerType = getPropertyNameFromTag(Const.JESGO_TAG.CANCER_MAJOR, dbRow.document, dbRow.document_schema);
 
@@ -278,7 +279,7 @@ export const searchPatients = async (
     }
 
     // その他がん種系
-    if (JSON.stringify(dbRow.document_schema).includes(jesgo_tagging(Const.JESGO_TAG.CANCER_MINOR)))
+    if (docSchema.includes(jesgo_tagging(Const.JESGO_TAG.CANCER_MINOR)))
     {
       const cancerType = getPropertyNameFromTag(Const.JESGO_TAG.CANCER_MINOR, dbRow.document, dbRow.document_schema);
 
@@ -292,7 +293,7 @@ export const searchPatients = async (
     }
 
     // 診断日
-    if (JSON.stringify(dbRow.document_schema).includes(jesgo_tagging(Const.JESGO_TAG.DIAGNOSIS_DATE))) 
+    if (docSchema.includes(jesgo_tagging(Const.JESGO_TAG.DIAGNOSIS_DATE))) 
     {
       const since = getPropertyNameFromTag(Const.JESGO_TAG.DIAGNOSIS_DATE, dbRow.document, dbRow.document_schema);
       // 日付変換に失敗する値の場合は無視する
@@ -309,7 +310,7 @@ export const searchPatients = async (
     }
 
     // 初回治療日
-    if (JSON.stringify(dbRow.document_schema).includes(jesgo_tagging(Const.JESGO_TAG.INITIAL_TREATMENT_DATE))) 
+    if (docSchema.includes(jesgo_tagging(Const.JESGO_TAG.INITIAL_TREATMENT_DATE))) 
     {
       const startDate = getPropertyNameFromTag(Const.JESGO_TAG.INITIAL_TREATMENT_DATE, dbRow.document, dbRow.document_schema);
       // 日付変換に失敗する値の場合は無視する
@@ -326,30 +327,30 @@ export const searchPatients = async (
 
     // 治療法系
     if (
-      JSON.stringify(dbRow.document_schema).includes(jesgo_tagging(Const.JESGO_TAG.TREATMENT_SURGERY)) ||
-      JSON.stringify(dbRow.document_schema).includes(jesgo_tagging(Const.JESGO_TAG.TREATMENT_CHEMO)) ||
-      JSON.stringify(dbRow.document_schema).includes(jesgo_tagging(Const.JESGO_TAG.TREATMENT_RADIO)) ||
-      JSON.stringify(dbRow.document_schema).includes(jesgo_tagging(Const.JESGO_TAG.TREATMENT_SUPPORTIVECARE))
+      docSchema.includes(jesgo_tagging(Const.JESGO_TAG.TREATMENT_SURGERY)) ||
+      docSchema.includes(jesgo_tagging(Const.JESGO_TAG.TREATMENT_CHEMO)) ||
+      docSchema.includes(jesgo_tagging(Const.JESGO_TAG.TREATMENT_RADIO)) ||
+      docSchema.includes(jesgo_tagging(Const.JESGO_TAG.TREATMENT_SUPPORTIVECARE))
     ) {
       let iconTag = '';
 
       if (
-        JSON.stringify(dbRow.document_schema).includes(jesgo_tagging(Const.JESGO_TAG.TREATMENT_SURGERY)) &&
+        docSchema.includes(jesgo_tagging(Const.JESGO_TAG.TREATMENT_SURGERY)) &&
         getPropertyNameFromTag(Const.JESGO_TAG.TREATMENT_SURGERY, dbRow.document, dbRow.document_schema) !== ''
       ) {
         iconTag = 'surgery';
       } else if (
-        JSON.stringify(dbRow.document_schema).includes(jesgo_tagging(Const.JESGO_TAG.TREATMENT_CHEMO)) &&
+        docSchema.includes(jesgo_tagging(Const.JESGO_TAG.TREATMENT_CHEMO)) &&
         getPropertyNameFromTag(Const.JESGO_TAG.TREATMENT_CHEMO, dbRow.document, dbRow.document_schema) !== ''
       ) {
         iconTag = 'chemo';
       } else if (
-        JSON.stringify(dbRow.document_schema).includes(jesgo_tagging(Const.JESGO_TAG.TREATMENT_RADIO)) &&
+        docSchema.includes(jesgo_tagging(Const.JESGO_TAG.TREATMENT_RADIO)) &&
         getPropertyNameFromTag(Const.JESGO_TAG.TREATMENT_RADIO, dbRow.document, dbRow.document_schema) !== ''
       ) {
         iconTag = 'radio';
       } else if (
-        JSON.stringify(dbRow.document_schema).includes(jesgo_tagging(Const.JESGO_TAG.TREATMENT_SUPPORTIVECARE)) &&
+        docSchema.includes(jesgo_tagging(Const.JESGO_TAG.TREATMENT_SUPPORTIVECARE)) &&
         getPropertyNameFromTag(Const.JESGO_TAG.TREATMENT_SUPPORTIVECARE, dbRow.document, dbRow.document_schema) !== ''
       ) {
         iconTag = 'supportivecare';
@@ -371,7 +372,7 @@ export const searchPatients = async (
     }
 
     // 進行期
-    if (JSON.stringify(dbRow.document_schema).includes(jesgo_tagging(Const.JESGO_TAG.FIGO))) 
+    if (docSchema.includes(jesgo_tagging(Const.JESGO_TAG.FIGO))) 
     {
       const tempFigo = getPropertyNameFromTag(Const.JESGO_TAG.FIGO, dbRow.document, dbRow.document_schema);
       const figo = tempFigo && tempFigo !== '' ? tempFigo : '未';
@@ -384,17 +385,17 @@ export const searchPatients = async (
     }
 
     // 再発
-    if (JSON.stringify(dbRow.document_schema).includes(jesgo_tagging(Const.JESGO_TAG.RECURRENCE))) {
+    if (docSchema.includes(jesgo_tagging(Const.JESGO_TAG.RECURRENCE))) {
       userData.status.push('recurrence');
     }
 
     // 腫瘍登録番号登録有無
-    if (JSON.stringify(dbRow.document_schema).includes(jesgo_tagging(Const.JESGO_TAG.REGISTRABILITY))) 
+    if (docSchema.includes(jesgo_tagging(Const.JESGO_TAG.REGISTRABILITY))) 
     {
       const registrability = getPropertyNameFromTag(Const.JESGO_TAG.REGISTRABILITY, dbRow.document, dbRow.document_schema);
       if(registrability && registrability === 'はい'){
         // 登録対象症例の値が はい であれば腫瘍登録番号を見る
-        if (JSON.stringify(dbRow.document_schema).includes(jesgo_tagging(Const.JESGO_TAG.REGISTRATION_NUMBER))) 
+        if (docSchema.includes(jesgo_tagging(Const.JESGO_TAG.REGISTRATION_NUMBER))) 
         {
           // 同じドキュメント内にある腫瘍登録番号が記載されていれば完了を、記載がなければ未完了とする
           const registrationNumber = getPropertyNameFromTag(Const.JESGO_TAG.REGISTRATION_NUMBER, dbRow.document, dbRow.document_schema);
@@ -412,7 +413,7 @@ export const searchPatients = async (
 
     // 3年予後と5年予後は該当ドキュメントがあれば値を登録、該当年数がたっていなければ後から値を削除する
     // 3年予後
-    if (JSON.stringify(dbRow.document_schema).includes(jesgo_tagging(Const.JESGO_TAG.THREE_YEAR_PROGNOSIS)))
+    if (docSchema.includes(jesgo_tagging(Const.JESGO_TAG.THREE_YEAR_PROGNOSIS)))
     {
       const threeYearPrognosis = getPropertyNameFromTag(Const.JESGO_TAG.THREE_YEAR_PROGNOSIS, dbRow.document, dbRow.document_schema);
       if (threeYearPrognosis !== null && threeYearPrognosis !== '') {
@@ -423,7 +424,7 @@ export const searchPatients = async (
     }
 
     // 5年予後
-    if (JSON.stringify(dbRow.document_schema).includes(jesgo_tagging(Const.JESGO_TAG.FIVE_YEAR_PROGNOSIS)))
+    if (docSchema.includes(jesgo_tagging(Const.JESGO_TAG.FIVE_YEAR_PROGNOSIS)))
     {
       const fiveYearPrognosis = getPropertyNameFromTag(Const.JESGO_TAG.FIVE_YEAR_PROGNOSIS, dbRow.document, dbRow.document_schema);
       if (fiveYearPrognosis !== null && fiveYearPrognosis !== '') {
