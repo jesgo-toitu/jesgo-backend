@@ -786,6 +786,17 @@ export const schemaListUpdate = async (errorMessages: string[]) => {
   await updateSearchColumn();
 };
 
+/** JSONSchema7のkeyと値を全て取得 */
+export const getItemsAndNames = (item: JSONSchema7) => {
+  logging(LOGTYPE.DEBUG, `呼び出し`, 'JsonToDatabase', 'getItemsAndNames');
+  if (item === null) return { pItems: {}, pNames: [] } as schemaItem;
+  const result: schemaItem = {
+    pItems: item as {[key: string]: JSONSchema7Definition},
+    pNames: Object.keys(item),
+  };
+  return result;
+};
+
 /** JSONSchema7のpropertiesのkeyと値を全て取得 */
 export const getPropItemsAndNames = (item: JSONSchema7) => {
   logging(LOGTYPE.DEBUG, `呼び出し`, 'JsonToDatabase', 'getPropItemsAndNames');
