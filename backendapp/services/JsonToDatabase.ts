@@ -654,6 +654,8 @@ export const schemaListUpdate = async (errorMessages: string[]) => {
     schema_id_string: string;
     sub_s: string[];
     child_s: string[];
+    default_sub_s: number[];
+    default_child_s: number[];
   };
   type schemaId = { schema_id: number };
 
@@ -662,7 +664,9 @@ export const schemaListUpdate = async (errorMessages: string[]) => {
     `SELECT schema_id, 
     schema_id_string, 
     document_schema->'jesgo:subschema' as sub_s, 
-    document_schema->'jesgo:childschema' as child_s 
+    document_schema->'jesgo:childschema' as child_s, 
+    subschema_default as default_sub_s, 
+    child_schema_default as default_child_s 
     FROM jesgo_document_schema`
   )) as dbRow[];
   
@@ -759,18 +763,27 @@ export const schemaListUpdate = async (errorMessages: string[]) => {
     // 子スキーマのリストから重複を削除
     // eslint-disable-next-line
     const newChildSchemaList = lodash.uniq(childSchemaList).filter(id => !subSchemaList.includes(id));
-    await dbAccess.query(
-      `UPDATE jesgo_document_schema SET subschema = '{${numArrayCast2Pg(
-        subSchemaList
-      )}}', child_schema = '{${numArrayCast2Pg(
-        newChildSchemaList
-      )}}', inherit_schema = '{${numArrayCast2Pg(
-        inheritSchemaList
-      )}}', base_schema = ${undefined2Null(
-        baseSchemaId
-      )} WHERE schema_id = $1`,
-      [row.schema_id]
-    );
+
+    let query = 
+      `UPDATE jesgo_document_schema SET 
+      inherit_schema = '{${numArrayCast2Pg(inheritSchemaList)}}', 
+      base_schema = ${undefined2Null(baseSchemaId)}`;
+
+    if(!lodash.isEqual(subSchemaList, row.default_sub_s)){
+      query += 
+        `, subschema = '{${numArrayCast2Pg(subSchemaList)}}'
+         , subschema_default = '{${numArrayCast2Pg(subSchemaList)}}'`
+    }
+
+    if(!lodash.isEqual(newChildSchemaList, row.default_child_s)){
+      query += 
+        `, child_schema = '{${numArrayCast2Pg(newChildSchemaList)}}'
+         , child_schema_default = '{${numArrayCast2Pg(newChildSchemaList)}}'`
+    }
+
+    query += ' WHERE schema_id = $1'
+
+    await dbAccess.query(query, [row.schema_id]);
   }
 };
 
