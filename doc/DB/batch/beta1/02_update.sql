@@ -1,0 +1,1 @@
+UPDATE jesgo_document_schema SET subschema_default = subschema, child_schema_default = child_schema;
