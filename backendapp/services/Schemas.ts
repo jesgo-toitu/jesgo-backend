@@ -93,7 +93,7 @@ export const getSearchColumns = async (): Promise<ApiReturnObject> => {
   logging(LOGTYPE.DEBUG, `呼び出し`, 'Schemas', 'getSearchColumns');
 
   type dbRow = {
-    column_name:string
+    column_name: string;
   };
 
   try {
@@ -102,24 +102,31 @@ export const getSearchColumns = async (): Promise<ApiReturnObject> => {
 
     // 現状ではがん種のみ、必要なら処理を増やす
     const cancerType: string[] = [];
-    const ret = await dbAccess.query("SELECT column_name FROM jesgo_search_column WHERE column_type ='cancer_type' ORDER BY column_id") as dbRow[];
-    for(let i =0; i < ret.length; i++){
+    const ret = (await dbAccess.query(
+      "SELECT column_name FROM jesgo_search_column WHERE column_type ='cancer_type' ORDER BY column_id"
+    )) as dbRow[];
+    for (let i = 0; i < ret.length; i++) {
       cancerType.push(ret[i].column_name);
     }
     // ここまで
 
     await dbAccess.end();
 
-    const searchColumns:searchColumnsFromApi = {
-      cancerTypes: cancerType
+    const searchColumns: searchColumnsFromApi = {
+      cancerTypes: cancerType,
     };
 
     return { statusNum: RESULT.NORMAL_TERMINATION, body: searchColumns };
   } catch (e) {
-    logging(LOGTYPE.ERROR, `エラー発生 ${(e as Error).message}`, 'Schemas', 'getSearchColumns');
+    logging(
+      LOGTYPE.ERROR,
+      `エラー発生 ${(e as Error).message}`,
+      'Schemas',
+      'getSearchColumns'
+    );
     return { statusNum: RESULT.ABNORMAL_TERMINATION, body: [] };
   }
-}
+};
 
 //
 type jesgoDocumentFromDb = {
