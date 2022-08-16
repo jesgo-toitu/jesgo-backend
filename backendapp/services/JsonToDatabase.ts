@@ -7,6 +7,7 @@ import { Extract, ParseStream } from 'unzipper';
 import * as fs from 'fs';
 import fse from 'fs-extra';
 import * as path from 'path';
+import { Const, escapeText, jesgo_tagging } from '../logic/Utility';
 
 // 定数
 // 一時展開用パス
@@ -191,6 +192,8 @@ export interface JSONSchema7 {
    */
   'jesgo:required'?: string[] | undefined;
   'jesgo:set'?: string | undefined;
+  'jesgo:get'?: string | undefined;
+  'jesgo:tag'?: string | undefined;
   'jesgo:parentschema'?: string[] | undefined;
   'jesgo:unique'?: boolean | undefined;
   'jesgo:copy'?: boolean | undefined;
@@ -213,6 +216,12 @@ type oldSchema = {
   version_major: number;
   version_minor: number,
 }
+
+/** Schema加工用Utility */
+type schemaItem = {
+  pItems: { [key: string]: JSONSchema7Definition };
+  pNames: string[];
+};
 
 const dbAccess = new DbAccess();
 
@@ -772,7 +781,98 @@ export const schemaListUpdate = async (errorMessages: string[]) => {
       [row.schema_id]
     );
   }
+
+  // スキーマの更新に合わせて検索用セレクトボックスも更新する
+  await updateSearchColumn();
 };
+
+/** JSONSchema7のkeyと値を全て取得 */
+export const getItemsAndNames = (item: JSONSchema7) => {
+  logging(LOGTYPE.DEBUG, `呼び出し`, 'JsonToDatabase', 'getItemsAndNames');
+  if (item === null) return { pItems: {}, pNames: [] } as schemaItem;
+  const result: schemaItem = {
+    pItems: item as {[key: string]: JSONSchema7Definition},
+    pNames: Object.keys(item),
+  };
+  return result;
+};
+
+/** JSONSchema7のpropertiesのkeyと値を全て取得 */
+export const getPropItemsAndNames = (item: JSONSchema7) => {
+  logging(LOGTYPE.DEBUG, `呼び出し`, 'JsonToDatabase', 'getPropItemsAndNames');
+  if (item.properties == null) return { pItems: {}, pNames: [] } as schemaItem;
+  const result: schemaItem = {
+    pItems: item.properties ?? {},
+    pNames: Object.keys(item.properties) ?? [],
+  };
+  return result;
+};
+
+/** JSONSchema7の「thenの中の」propertiesのkeyと値を全て取得 */
+export const getThenPropItemsAndNames = (item: JSONSchema7) => {
+  logging(LOGTYPE.DEBUG, `呼び出し`, 'JsonToDatabase', 'getThenPropItemsAndNames');
+  if (item.then == null) return { pItems: {}, pNames: [] } as schemaItem;
+  const pItems = (item.then as JSONSchema7).properties ?? {}
+  const result: schemaItem = {
+    pItems: pItems,
+    pNames: Object.keys(pItems) ?? [],
+  };
+  return result;
+};
+
+/**
+ * アップロードされたスキーマから検索用のセレクトボックスデータをDBに更新する
+ */
+export const updateSearchColumn = async ():Promise<void> => {
+  logging(LOGTYPE.DEBUG, `呼び出し`, 'JsonToDatabase', 'updateSearchColumn');
+  type dbRow = {
+    document_schema: JSONSchema7
+  };
+
+  const majorCancers:string[] = [];
+  const minorCancers:string[] = []
+
+  const dbRows: dbRow[] = (await dbAccess.query(
+    `SELECT document_schema 
+    FROM view_latest_schema 
+    WHERE document_schema->>'properties' like '%${escapeText(jesgo_tagging(Const.JESGO_TAG.CANCER_MAJOR))}%' 
+    OR document_schema->>'properties' like '%${escapeText(jesgo_tagging(Const.JESGO_TAG.CANCER_MINOR))}%' 
+    ORDER BY schema_id_string;`
+  )) as dbRow[];
+
+  for (let index = 0; index < dbRows.length; index++) {
+    const dbRow = dbRows[index];
+    const schema = dbRow.document_schema;
+    const schemaItems = getPropItemsAndNames(schema);
+
+    for(let i = 0; i < schemaItems.pNames.length; i++) {
+      const prop = schemaItems.pItems[schemaItems.pNames[i]] as JSONSchema7;
+      if(prop['jesgo:tag'] && 
+        (prop['jesgo:tag'] == Const.JESGO_TAG.CANCER_MAJOR || 
+         prop['jesgo:tag'] == Const.JESGO_TAG.CANCER_MINOR)){
+        
+        const target = prop['jesgo:tag'] == Const.JESGO_TAG.CANCER_MAJOR ? majorCancers : minorCancers;
+        if(prop['default']){
+          target.push(prop['default'] as string);
+        }else if(prop['const']){
+          target.push(prop['const'] as string);
+        }else if(prop['enum']){
+          for(let j = 0; j < prop['enum'].length; j++){
+            target.push(prop['enum'][j] as string);
+          }
+        }
+      }
+    }
+  }
+
+  // 取得した情報でDBを更新
+  await dbAccess.query("DELETE FROM jesgo_search_column WHERE column_type = 'cancer_type'");
+  const cancerList = majorCancers.concat(minorCancers);
+
+  for(let i = 0; i < cancerList.length; i++){
+    await dbAccess.query("INSERT INTO jesgo_search_column VALUES ($1, 'cancer_type', $2)", [(i+1), cancerList[i]]);
+  }
+}
 
 export const jsonToSchema = async ():Promise<ApiReturnObject> => {
   logging(LOGTYPE.DEBUG, `呼び出し`, 'JsonToDatabase', 'jsonToSchema');
@@ -819,12 +919,13 @@ const streamPromise = async (stream:ParseStream) => {
   })
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const uploadZipFile = async (data:any):Promise<ApiReturnObject> => {
   logging(LOGTYPE.DEBUG, '呼び出し', 'JsonToDatabase', 'uploadZipFile');
   // eslint-disable-next-line
   const filePath:string = data.path;
   const errorMessages:string[] = [];
-  let fileType:string = path.extname(data.originalname).toLowerCase();
+  const fileType:string = path.extname(data.originalname).toLowerCase();
   // eslint-disable-next-line
   try{
     switch (fileType) {
