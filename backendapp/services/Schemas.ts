@@ -20,6 +20,8 @@ export type schemaRecord = {
   hidden: boolean;
   subschema: number[];
   child_schema: number[];
+  subschema_default: number[];
+  child_schema_default: number[];
   inherit_schema: number[];
   base_schema: number | null;
   base_version_major: number;
