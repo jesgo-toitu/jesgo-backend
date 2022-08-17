@@ -2,6 +2,9 @@ import { DbAccess } from '../logic/DbAccess';
 import { ParsedQs } from 'qs';
 import { ApiReturnObject, RESULT } from '../logic/ApiCommon';
 import { logging, LOGTYPE } from '../logic/Logger';
+import { Const, isAgoYearFromNow, jesgo_tagging } from '../logic/Utility';
+import { getItemsAndNames, JSONSchema7 } from './JsonToDatabase';
+
 //インターフェース
 export interface dbRow {
   his_id: string;
@@ -9,23 +12,23 @@ export interface dbRow {
   age: number;
   death_age: number;
   schemaidstring: string;
-  since: string;
-  start_date: string;
   last_updated: string;
-  figo: string;
   child_documents: number[];
   document_id: number;
+  document: JSON;
+  document_schema: JSONSchema7;
   case_id: number;
   deleted: boolean;
-  chemotherapy_date: string;
-  operation_date: string;
-  radiotherapy_date: string;
-  evaluation_date: string;
-  cancer_type: string;
   date_of_death: string;
   registration: string;
   decline: boolean;
 }
+
+export interface searchColumns {
+  column_id: number;
+  column_name: string;
+}
+
 interface userData {
   caseId: number;
   patientId: string;
@@ -36,13 +39,9 @@ interface userData {
   startDate: string | null;
   lastUpdate: string;
   diagnosis: string;
-  diagnosisCervical: string;
-  diagnosisEndometrial: string;
-  diagnosisOvarian: string;
+  diagnosisMajor: string;
+  diagnosisMinor: string;
   advancedStage: string;
-  advancedStageCervical: string;
-  advancedStageEndometrial: string;
-  advancedStageOvarian: string;
   pathlogicalDiagnosis: string;
   initialTreatment: string[];
   copilacations: string[];
@@ -121,6 +120,53 @@ const addStatus = (
   return baseString;
 };
 
+/**
+ *
+ * @param tagName 取得対象のjesgo:tagの内容
+ */
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const getPropertyNameFromTag = (
+  tagName: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  document: any,
+  schema: JSONSchema7
+): string | null => {
+  logging(LOGTYPE.DEBUG, '呼び出し', 'SearchPatient', 'getPropertyNameFromTag');
+
+  const schemaItems = getItemsAndNames(schema);
+  let retText = null;
+  for (let i = 0; i < schemaItems.pNames.length; i++) {
+    const prop = schemaItems.pItems[schemaItems.pNames[i]] as JSONSchema7;
+    // 該当プロパティがオブジェクトの場合、タグが付いてるかを確認
+    if (typeof prop === 'object') {
+      // タグが付いていれば値を取得する
+      if (prop['jesgo:tag'] && prop['jesgo:tag'] == tagName) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+        const tempText = document[schemaItems.pNames[i]] as string | null;
+        if (tempText && tempText !== '') {
+          retText = tempText;
+        }
+      }
+      // タグがなければ中を再帰的に見に行く
+      else {
+        // ドキュメントが入れ子になっている場合、現在見ているプロパティネームの下にオブジェクトが存在すればそちらを新たなオブジェクトとして渡す
+        // eslint-disable-next-line
+        const newDocument = document[schemaItems.pNames[i]]
+          ? // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+            document[schemaItems.pNames[i]]
+          : document;
+        const ret = getPropertyNameFromTag(tagName, newDocument, prop);
+        if (ret !== null) {
+          retText = ret;
+        }
+      }
+    }
+    // オブジェクトでなければ中を見る必要無し
+  }
+  return retText;
+};
+
 export const searchPatients = async (
   query: searchPatientRequest
 ): Promise<ApiReturnObject> => {
@@ -133,20 +179,19 @@ export const searchPatients = async (
     DATE_PART('year', AGE(date_of_death, date_of_birth)) as death_age, 
     sch.schema_id_string as schemaidstring, 
     date_of_death, decline, 
-    doc.document->>'診断日' as since, to_char(ca.last_updated, 'yyyy/mm/dd') as last_updated, 
-    doc.document->>'初回治療開始日' as start_date, 
-    doc.document->>'FIGO' as figo, 
-    doc.document->>'投与開始日' as chemotherapy_date, 
-    doc.document->>'手術日' as operation_date, 
-    doc.document->>'治療開始日' as radiotherapy_date, 
-    doc.document->>'腫瘍登録番号' as registration, 
-    doc.document->>'がん種' as cancer_type, 
-    doc.document->>'評価日' as evaluation_date, 
+    to_char(ca.last_updated, 'yyyy/mm/dd') as last_updated, 
+    doc.document as document,  document_schema, 
     doc.child_documents, doc.document_id as document_id, ca.case_id as case_id, doc.deleted as deleted  
-    FROM jesgo_document doc JOIN jesgo_document_schema sch ON doc.schema_id = sch.schema_id RIGHT OUTER JOIN jesgo_case ca ON ca.case_id = doc.case_id
+    FROM jesgo_document doc JOIN view_latest_schema sch ON doc.schema_id = sch.schema_id RIGHT OUTER JOIN jesgo_case ca ON ca.case_id = doc.case_id
     WHERE ca.deleted = false 
     ORDER BY ca.case_id , sch.schema_id_string;`
   )) as dbRow[];
+
+  // がん種検索用のリストを取得しておく
+  const cancerSearchColumns = (await dbAccess.query(
+    "SELECT column_id, column_name FROM jesgo_search_column WHERE column_type = 'cancer_type' ORDER BY column_id"
+  )) as searchColumns[];
+
   await dbAccess.end();
 
   let recurrenceChildDocumentIds: number[] = [];
@@ -154,7 +199,11 @@ export const searchPatients = async (
   // 1回目のループで再発情報が乗っている行を探す
   for (let index = 0; index < dbRows.length; index++) {
     const dbRow: dbRow = dbRows[index];
-    if (dbRow.schemaidstring === '/schema/recurrence') {
+    if (
+      JSON.stringify(dbRow.document_schema).includes(
+        jesgo_tagging(Const.JESGO_TAG.RECURRENCE)
+      )
+    ) {
       recurrenceChildDocumentIds = dbRow.child_documents;
       break;
     }
@@ -164,6 +213,7 @@ export const searchPatients = async (
   const caseIdList: number[] = [];
   for (let index = 0; index < dbRows.length; index++) {
     const dbRow: dbRow = dbRows[index];
+    const docSchema = JSON.stringify(dbRow.document_schema);
     const caseId: number = dbRow.case_id;
     let rowIndex = caseIdList.indexOf(caseId);
     let userData: userData;
@@ -193,13 +243,9 @@ export const searchPatients = async (
         startDate: null,
         lastUpdate: dbRow.last_updated,
         diagnosis: '',
-        diagnosisCervical: '無',
-        diagnosisEndometrial: '無',
-        diagnosisOvarian: '無',
+        diagnosisMajor: '',
+        diagnosisMinor: '',
         advancedStage: '',
-        advancedStageCervical: '',
-        advancedStageEndometrial: '',
-        advancedStageOvarian: '',
         pathlogicalDiagnosis: '',
         initialTreatment: [],
         copilacations: [],
@@ -217,117 +263,152 @@ export const searchPatients = async (
       if (dbRow.date_of_death !== null) {
         userData.status.push('death');
       }
+
+      // 登録拒否が設定されている場合、拒否を追加
+      if (dbRow.decline) {
+        userData.registration.push('decline');
+      }
     }
 
     // 削除されているドキュメントの場合、ステータス系の更新は行わない
     if (dbRow.deleted) {
       continue;
     }
-
-    // がん種系
-    if (
-      dbRow.schemaidstring === '/schema/EM/root' ||
-      dbRow.schemaidstring === '/schema/CC/root' ||
-      dbRow.schemaidstring === '/schema/OV/root' ||
-      dbRow.schemaidstring === '/schema/other/root' ||
-      dbRow.schemaidstring === '/schema/common/root'
-    ) {
-      let cancerType = '';
-
-      if (dbRow.schemaidstring === '/schema/EM/root') {
-        cancerType = '子宮体がん';
-        userData.diagnosisEndometrial = '有';
-      }
-
-      if (dbRow.schemaidstring === '/schema/CC/root') {
-        cancerType = '子宮頸がん';
-        userData.diagnosisCervical = '有';
-      }
-
-      if (dbRow.schemaidstring === '/schema/OV/root') {
-        cancerType = '卵巣がん';
-        userData.diagnosisOvarian = '有';
-      }
-
-      if (
-        dbRow.schemaidstring === '/schema/other/root' ||
-        dbRow.schemaidstring === '/schema/common/root'
-      ) {
-        cancerType = dbRow.cancer_type;
-      }
+    jesgo_tagging(Const.JESGO_TAG.CANCER_MAJOR);
+    // 主要がん種系
+    if (docSchema.includes(jesgo_tagging(Const.JESGO_TAG.CANCER_MAJOR))) {
+      const cancerType =
+        getPropertyNameFromTag(
+          Const.JESGO_TAG.CANCER_MAJOR,
+          dbRow.document,
+          dbRow.document_schema
+        ) ?? '';
+      userData.diagnosisMajor = addStatus(
+        userData.diagnosisMajor,
+        cancerType,
+        '･'
+      );
 
       userData.registedCancerGroup = addStatus(
         userData.registedCancerGroup,
         cancerType,
         '･'
       );
-      userData.diagnosis = addStatus(userData.diagnosis, cancerType, '･');
+    }
 
-      // 診断日がもともと記録されていないか、もっと古いものであれば書き換える
-      if (
-        userData.since == null ||
-        (userData.since !== '' && userData.since > dbRow.since)
-      ) {
-        userData.since = dbRow.since;
+    // その他がん種系
+    if (docSchema.includes(jesgo_tagging(Const.JESGO_TAG.CANCER_MINOR))) {
+      const cancerType =
+        getPropertyNameFromTag(
+          Const.JESGO_TAG.CANCER_MINOR,
+          dbRow.document,
+          dbRow.document_schema
+        ) ?? '';
+      userData.diagnosisMinor = addStatus(
+        userData.diagnosisMinor,
+        cancerType,
+        '･'
+      );
+
+      userData.registedCancerGroup = addStatus(
+        userData.registedCancerGroup,
+        cancerType,
+        '･'
+      );
+    }
+
+    // 診断日
+    if (docSchema.includes(jesgo_tagging(Const.JESGO_TAG.DIAGNOSIS_DATE))) {
+      const since =
+        getPropertyNameFromTag(
+          Const.JESGO_TAG.DIAGNOSIS_DATE,
+          dbRow.document,
+          dbRow.document_schema
+        ) ?? '';
+      // 日付変換に失敗する値の場合は無視する
+      if (!isNaN(new Date(since).getFullYear())) {
+        // 診断日がもともと記録されていないか、もっと古いものであれば書き換える
+        if (!userData.since || (since !== '' && userData.since > since)) {
+          userData.since = since;
+        }
       }
+    }
 
-      // DBに初回治療日があり、現在値が記録されていないか、もっと古いものであれば書き換える
-      if (dbRow.start_date !== '') {
+    // 初回治療日
+    if (
+      docSchema.includes(jesgo_tagging(Const.JESGO_TAG.INITIAL_TREATMENT_DATE))
+    ) {
+      const startDate =
+        getPropertyNameFromTag(
+          Const.JESGO_TAG.INITIAL_TREATMENT_DATE,
+          dbRow.document,
+          dbRow.document_schema
+        ) ?? '';
+      // 日付変換に失敗する値の場合は無視する
+      if (!isNaN(new Date(startDate).getFullYear())) {
+        // 初回治療日がもともと記録されていないか、もっと古いものであれば書き換える
         if (
-          userData.startDate == null ||
-          userData.startDate > dbRow.start_date
+          !userData.startDate ||
+          (startDate !== '' && userData.startDate > startDate)
         ) {
-          userData.startDate = dbRow.start_date;
+          userData.startDate = startDate;
         }
       }
     }
 
     // 治療法系
     if (
-      dbRow.schemaidstring === '/schema/treatment/operation' ||
-      dbRow.schemaidstring === '/schema/treatment/operation/detailed' ||
-      dbRow.schemaidstring === '/schema/treatment/chemotherapy' ||
-      dbRow.schemaidstring === '/schema/treatment/radiotherapy' ||
-      dbRow.schemaidstring === '/schema/treatment/supportive_care'
+      docSchema.includes(jesgo_tagging(Const.JESGO_TAG.TREATMENT_SURGERY)) ||
+      docSchema.includes(jesgo_tagging(Const.JESGO_TAG.TREATMENT_CHEMO)) ||
+      docSchema.includes(jesgo_tagging(Const.JESGO_TAG.TREATMENT_RADIO)) ||
+      docSchema.includes(
+        jesgo_tagging(Const.JESGO_TAG.TREATMENT_SUPPORTIVECARE)
+      )
     ) {
       let iconTag = '';
-      let startDate = '';
 
       if (
-        (dbRow.schemaidstring === '/schema/treatment/operation' ||
-          dbRow.schemaidstring === '/schema/treatment/operation/detailed') &&
-        dbRow.operation_date !== null
+        docSchema.includes(jesgo_tagging(Const.JESGO_TAG.TREATMENT_SURGERY))
       ) {
-        iconTag = 'surgery';
-        startDate = dbRow.operation_date;
+        const tag =
+          getPropertyNameFromTag(
+            Const.JESGO_TAG.TREATMENT_SURGERY,
+            dbRow.document,
+            dbRow.document_schema
+          ) ?? '';
+        iconTag = tag !== '' ? 'surgery' : '';
       } else if (
-        dbRow.schemaidstring === '/schema/treatment/chemotherapy' &&
-        dbRow.chemotherapy_date !== null
+        docSchema.includes(jesgo_tagging(Const.JESGO_TAG.TREATMENT_CHEMO))
       ) {
-        iconTag = 'chemo';
-        startDate = dbRow.chemotherapy_date;
+        const tag =
+          getPropertyNameFromTag(
+            Const.JESGO_TAG.TREATMENT_CHEMO,
+            dbRow.document,
+            dbRow.document_schema
+          ) ?? '';
+        iconTag = tag !== '' ? 'chemo' : '';
       } else if (
-        dbRow.schemaidstring === '/schema/treatment/radiotherapy' &&
-        dbRow.radiotherapy_date !== null
+        docSchema.includes(jesgo_tagging(Const.JESGO_TAG.TREATMENT_RADIO))
       ) {
-        iconTag = 'radio';
-        startDate = dbRow.radiotherapy_date;
+        const tag =
+          getPropertyNameFromTag(
+            Const.JESGO_TAG.TREATMENT_RADIO,
+            dbRow.document,
+            dbRow.document_schema
+          ) ?? '';
+        iconTag = tag !== '' ? 'radio' : '';
       } else if (
-        dbRow.schemaidstring === '/schema/treatment/supportive_care' &&
-        dbRow.evaluation_date !== null
+        docSchema.includes(
+          jesgo_tagging(Const.JESGO_TAG.TREATMENT_SUPPORTIVECARE)
+        )
       ) {
-        iconTag = 'surveillance';
-        startDate = dbRow.evaluation_date;
-      }
-
-      // 初回治療日がもともと記録されていないか、もっと古いものであれば書き換える
-      if (startDate !== '') {
-        if (
-          userData.startDate == null ||
-          userData.startDate > dbRow.start_date
-        ) {
-          userData.startDate = startDate;
-        }
+        const tag =
+          getPropertyNameFromTag(
+            Const.JESGO_TAG.TREATMENT_SUPPORTIVECARE,
+            dbRow.document,
+            dbRow.document_schema
+          ) ?? '';
+        iconTag = tag !== '' ? 'supportivecare' : '';
       }
 
       if (iconTag !== '') {
@@ -346,23 +427,15 @@ export const searchPatients = async (
     }
 
     // 進行期
-    if (
-      dbRow.schemaidstring === '/schema/EM/staging' ||
-      dbRow.schemaidstring === '/schema/CC/staging' ||
-      dbRow.schemaidstring === '/schema/OV/staging'
-    ) {
-      const figo = dbRow.figo && dbRow.figo !== '' ? dbRow.figo : '未';
-      if (dbRow.schemaidstring === '/schema/EM/staging') {
-        userData.advancedStageEndometrial = figo;
-      }
+    if (docSchema.includes(jesgo_tagging(Const.JESGO_TAG.FIGO))) {
+      const tempFigo =
+        getPropertyNameFromTag(
+          Const.JESGO_TAG.FIGO,
+          dbRow.document,
+          dbRow.document_schema
+        ) ?? '';
+      const figo = tempFigo && tempFigo !== '' ? tempFigo : '未';
 
-      if (dbRow.schemaidstring === '/schema/CC/staging') {
-        userData.advancedStageCervical = figo;
-      }
-
-      if (dbRow.schemaidstring === '/schema/OV/staging') {
-        userData.advancedStageOvarian = figo;
-      }
       userData.advancedStage = addStatusAllowDuplicate(
         userData.advancedStage,
         figo,
@@ -371,45 +444,132 @@ export const searchPatients = async (
     }
 
     // 再発
-    if (dbRow.schemaidstring === '/schema/recurrence') {
-      userData.progress.push('recurrence');
+    if (docSchema.includes(jesgo_tagging(Const.JESGO_TAG.RECURRENCE))) {
       userData.status.push('recurrence');
     }
 
-    // 経過
-    if (dbRow.schemaidstring === '/schema/surveillance') {
-      userData.progress.push('surveillance');
-      // userData.status.push('surveillance');
-    }
-
-    // 合併症
-    if (dbRow.schemaidstring === '/schema/treatment/operation_adverse_events') {
-      // userData.copilacations.push('complications');
-      // userData.status.push('complications');
-    }
-
     // 腫瘍登録番号登録有無
-    if (userData.registration.length === 0) {
-      if (dbRow.decline) {
-        userData.registration.push('decline');
-      } else if (dbRow.registration !== null && dbRow.registration !== '') {
-        userData.registration.push('completed');
+    if (docSchema.includes(jesgo_tagging(Const.JESGO_TAG.REGISTRABILITY))) {
+      const registrability =
+        getPropertyNameFromTag(
+          Const.JESGO_TAG.REGISTRABILITY,
+          dbRow.document,
+          dbRow.document_schema
+        ) ?? '';
+      if (registrability && registrability === 'はい') {
+        // 登録対象症例の値が はい であれば腫瘍登録番号を見る
+        if (
+          docSchema.includes(jesgo_tagging(Const.JESGO_TAG.REGISTRATION_NUMBER))
+        ) {
+          // 同じドキュメント内にある腫瘍登録番号が記載されていれば完了を、記載がなければ未完了とする
+          const registrationNumber =
+            getPropertyNameFromTag(
+              Const.JESGO_TAG.REGISTRATION_NUMBER,
+              dbRow.document,
+              dbRow.document_schema
+            ) ?? '';
+          if (registrationNumber !== null && registrationNumber !== '') {
+            userData.registration.push('completed');
+          } else {
+            userData.registration.push('not_completed');
+          }
+        } else {
+          // 同じドキュメント内に腫瘍登録番号そのものが記載されていなくても未入力扱いにする
+          userData.registration.push('not_completed');
+        }
+      }
+    }
+
+    // 3年予後と5年予後は該当ドキュメントがあれば値を登録、該当年数がたっていなければ後から値を削除する
+    // 3年予後
+    if (
+      docSchema.includes(jesgo_tagging(Const.JESGO_TAG.THREE_YEAR_PROGNOSIS))
+    ) {
+      const threeYearPrognosis =
+        getPropertyNameFromTag(
+          Const.JESGO_TAG.THREE_YEAR_PROGNOSIS,
+          dbRow.document,
+          dbRow.document_schema
+        ) ?? '';
+      if (threeYearPrognosis !== null && threeYearPrognosis !== '') {
+        userData.threeYearPrognosis.push('completed');
+      } else {
+        userData.threeYearPrognosis.push('not_completed');
+      }
+    }
+
+    // 5年予後
+    if (
+      docSchema.includes(jesgo_tagging(Const.JESGO_TAG.FIVE_YEAR_PROGNOSIS))
+    ) {
+      const fiveYearPrognosis =
+        getPropertyNameFromTag(
+          Const.JESGO_TAG.FIVE_YEAR_PROGNOSIS,
+          dbRow.document,
+          dbRow.document_schema
+        ) ?? '';
+      if (fiveYearPrognosis !== null && fiveYearPrognosis !== '') {
+        userData.fiveYearPrognosis.push('completed');
+      } else {
+        userData.fiveYearPrognosis.push('not_completed');
       }
     }
   }
 
-  // 未入力埋め
+  // がん種結合
+  for (let index = 0; index < userDataList.length; index++) {
+    const userData = userDataList[index];
+    userData.diagnosis = addStatus(
+      userData.diagnosisMajor,
+      userData.diagnosisMinor,
+      '･'
+    );
+  }
+
+  // 未入力埋め、整形
   for (let index = 0; index < userDataList.length; index++) {
     const userData = userDataList[index];
     const regex = new RegExp(/^[未・]*$/);
+
+    // 進行期
     if (userData.advancedStage === '' || regex.test(userData.advancedStage)) {
       userData.advancedStage = '未';
     }
+
+    // 診断日
     if (userData.diagnosis === '') {
       userData.diagnosis = '未';
     }
-    if (userData.registration.length === 0) {
-      userData.registration.push('not_completed');
+
+    // 登録
+    if (userData.registration.length > 0) {
+      // 1つ以上の値がある場合は、「拒否」、「未」、「済」の優先順で一番優先された物を値とする
+      const orderRule = ['decline', 'not_completed', 'completed'];
+      userData.registration = [
+        userData.registration.sort(
+          (a, b) => orderRule.indexOf(a) - orderRule.indexOf(b)
+        )[0],
+      ];
+    }
+    // 値がない場合は何も表示しない
+
+    // 3年予後、5年予後
+    if (userData.startDate == null) {
+      // 初回治療日が指定されていない場合は3年予後、5年予後とも未指定とする
+      userData.threeYearPrognosis = [];
+      userData.fiveYearPrognosis = [];
+    } else {
+      // 3年予後
+      if (!isAgoYearFromNow(new Date(userData.startDate), 3)) {
+        // 3年たっていなければ未指定とする(たっていればそのまま)
+        userData.threeYearPrognosis = [];
+      }
+
+      // 5年予後
+      if (!isAgoYearFromNow(new Date(userData.startDate), 5)) {
+        // 5年たっていなければ未指定とする(たっていればそのまま)
+        userData.fiveYearPrognosis = [];
+      }
     }
   }
 
@@ -434,19 +594,17 @@ export const searchPatients = async (
 
   // がん種別指定がある場合、指定がん種を含まないものを配列から削除する
   if (query.cancerType && query.cancerType != 'all') {
-    let cancerType = '';
-    if (query.cancerType === 'cervical') {
-      cancerType = '子宮頸がん';
-    } else if (query.cancerType === 'endometrial') {
-      cancerType = '子宮体がん';
-    } else if (query.cancerType === 'ovarian') {
-      cancerType = '卵巣がん';
-    }
-    for (let index = 0; index < userDataList.length; index++) {
-      const userData = userDataList[index];
-      if (userData.registedCancerGroup.indexOf(cancerType) == -1) {
-        userDataList.splice(index, 1);
-        index--;
+    const cancerNum = Number(query.cancerType);
+    const cancerType = cancerSearchColumns.find(
+      (v) => v.column_id === cancerNum
+    )?.column_name;
+    if (cancerType) {
+      for (let index = 0; index < userDataList.length; index++) {
+        const userData = userDataList[index];
+        if (userData.registedCancerGroup.indexOf(cancerType) == -1) {
+          userDataList.splice(index, 1);
+          index--;
+        }
       }
     }
   }

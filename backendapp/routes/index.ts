@@ -20,21 +20,18 @@ import {
   searchPatientRequest,
   searchPatients,
 } from '../services/SearchPatient';
-import { jsonToSchema, uploadZipFile } from '../services/JsonToDatabase';
+import { uploadZipFile } from '../services/JsonToDatabase';
 import Router from 'express-promise-router';
 import {
   getCaseAndDocument,
   getJsonSchema,
   getRootSchemaIds,
   getSchemaTree,
+  getSearchColumns,
   registrationCaseAndDocument,
   SaveDataObjDefine,
 } from '../services/Schemas';
-import {
-  getSettings,
-  settings,
-  updateSettings,
-} from '../services/Settings'
+import { getSettings, settings, updateSettings } from '../services/Settings';
 import { ApiReturnObject, getToken, RESULT } from '../logic/ApiCommon';
 import { logging, LOGTYPE } from '../logic/Logger';
 
@@ -44,7 +41,7 @@ app.use(cors());
 // ルーティングする
 
 const router = Router();
-const upload = multer({ dest: 'uploads/' })
+const upload = multer({ dest: 'uploads/' });
 
 // routerにルーティングの動作を記述する
 
@@ -74,7 +71,13 @@ router.post('/relogin/', (req, res, next) => {
 });
 
 router.get('/getJsonSchema', async (req, res, next) => {
-  logging(LOGTYPE.DEBUG, '呼び出し', 'router', '/getJsonSchema', getUsernameFromRequest(req));
+  logging(
+    LOGTYPE.DEBUG,
+    '呼び出し',
+    'router',
+    '/getJsonSchema',
+    getUsernameFromRequest(req)
+  );
   // 権限の確認
   const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.view);
   if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
@@ -87,12 +90,24 @@ router.get('/getJsonSchema', async (req, res, next) => {
   }
   // 権限が無い場合
   else {
-    logging(LOGTYPE.ERROR, '権限エラー', 'router', '/getJsonSchema', getUsernameFromRequest(req));
+    logging(
+      LOGTYPE.ERROR,
+      '権限エラー',
+      'router',
+      '/getJsonSchema',
+      getUsernameFromRequest(req)
+    );
   }
 });
 
 router.get('/getRootSchemaIds', async (req, res, next) => {
-  logging(LOGTYPE.DEBUG, '呼び出し', 'router', '/getRootSchemaIds', getUsernameFromRequest(req));
+  logging(
+    LOGTYPE.DEBUG,
+    '呼び出し',
+    'router',
+    '/getRootSchemaIds',
+    getUsernameFromRequest(req)
+  );
   // 権限の確認
   const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.view);
   if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
@@ -105,14 +120,26 @@ router.get('/getRootSchemaIds', async (req, res, next) => {
   }
   // 権限が無い場合
   else {
-    logging(LOGTYPE.ERROR, '権限エラー', 'router', '/getRootSchemaIds', getUsernameFromRequest(req));
+    logging(
+      LOGTYPE.ERROR,
+      '権限エラー',
+      'router',
+      '/getRootSchemaIds',
+      getUsernameFromRequest(req)
+    );
   }
 });
 /**
  * ユーザー一覧
  */
- router.get('/userlist', async (req, res, next) => {
-  logging(LOGTYPE.DEBUG, '呼び出し', 'router', '/userlist', getUsernameFromRequest(req));
+router.get('/userlist', async (req, res, next) => {
+  logging(
+    LOGTYPE.DEBUG,
+    '呼び出し',
+    'router',
+    '/userlist',
+    getUsernameFromRequest(req)
+  );
   // 権限の確認
   const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.view);
   if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
@@ -125,7 +152,13 @@ router.get('/getRootSchemaIds', async (req, res, next) => {
     }
     // 権限が無い場合
     else {
-      logging(LOGTYPE.ERROR, '権限エラー', 'router', '/userlist', getUsernameFromRequest(req));
+      logging(
+        LOGTYPE.ERROR,
+        '権限エラー',
+        'router',
+        '/userlist',
+        getUsernameFromRequest(req)
+      );
     }
   }
 });
@@ -133,63 +166,75 @@ router.get('/getRootSchemaIds', async (req, res, next) => {
 /**
  * ユーザー登録
  */
- router.post('/signup/', async (req, res, next) => {
-  logging(LOGTYPE.DEBUG, '呼び出し', 'router', '/signup', getUsernameFromRequest(req));
+router.post('/signup/', async (req, res, next) => {
+  logging(
+    LOGTYPE.DEBUG,
+    '呼び出し',
+    'router',
+    '/signup',
+    getUsernameFromRequest(req)
+  );
 
   // 権限の確認
   const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.view);
   if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
     res.status(200).send(authResult);
-  }
-  else {
+  } else {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     const body: userObject = req.body.data as userObject;
     signUpUser(body.name, body.display_name, body.password, body.roll_id)
       .then((result) => res.status(200).send(result))
       .catch(next);
-    }
+  }
 });
 
 /**
  * ユーザー削除
  */
- router.post('/deleteUser/', async (req, res, next) => {
-  logging(LOGTYPE.DEBUG, '呼び出し', 'router', '/deleteUser', getUsernameFromRequest(req));
+router.post('/deleteUser/', async (req, res, next) => {
+  logging(
+    LOGTYPE.DEBUG,
+    '呼び出し',
+    'router',
+    '/deleteUser',
+    getUsernameFromRequest(req)
+  );
 
   // 権限の確認
   const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.view);
   if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
     res.status(200).send(authResult);
-  }
-  else {
+  } else {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     const body: userObject = req.body.data as userObject;
     deleteUser(body.user_id)
       .then((result) => res.status(200).send(result))
       .catch(next);
-    }
+  }
 });
 
 /**
  * ユーザーパスワード変更
  */
- router.post('/changeUserPassword/', async (req, res, next) => {
-  logging(LOGTYPE.DEBUG, '呼び出し', 'router', '/changeUserPassword', getUsernameFromRequest(req));
+router.post('/changeUserPassword/', async (req, res, next) => {
+  logging(
+    LOGTYPE.DEBUG,
+    '呼び出し',
+    'router',
+    '/changeUserPassword',
+    getUsernameFromRequest(req)
+  );
 
   // 権限の確認
   const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.view);
   if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
     res.status(200).send(authResult);
-  }
-  else {
+  } else {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     const body: userObject = req.body.data as userObject;
-    changePassword(
-      body.user_id,
-      body.password
-    )
-    .then((result) => res.status(200).send(result))
-    .catch(next);
+    changePassword(body.user_id, body.password)
+      .then((result) => res.status(200).send(result))
+      .catch(next);
   }
 });
 
@@ -197,14 +242,19 @@ router.get('/getRootSchemaIds', async (req, res, next) => {
  * ユーザー更新
  */
 router.post('/editUser/', async (req, res, next) => {
-  logging(LOGTYPE.DEBUG, '呼び出し', 'router', '/editUser', getUsernameFromRequest(req));
+  logging(
+    LOGTYPE.DEBUG,
+    '呼び出し',
+    'router',
+    '/editUser',
+    getUsernameFromRequest(req)
+  );
 
   // 権限の確認
   const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.view);
   if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
     res.status(200).send(authResult);
-  }
-  else {
+  } else {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     const body: userObject = req.body.data as userObject;
     editUserProfile(
@@ -214,8 +264,8 @@ router.post('/editUser/', async (req, res, next) => {
       body.password,
       body.roll_id
     )
-    .then((result) => res.status(200).send(result))
-    .catch(next);
+      .then((result) => res.status(200).send(result))
+      .catch(next);
   }
 });
 
@@ -225,11 +275,26 @@ router.post('/editUser/', async (req, res, next) => {
 
 /**
  * リスト画面用 start
+ * getSearchColumns
  * patientlist
  * deleteCase
  */
+router.get('/getSearchColumns', async (req, res, next) => {
+  logging(LOGTYPE.DEBUG, '呼び出し', 'router', '/getSearchColumns');
+  // ログイン画面でも使用するので権限を設定しない
+  await getSearchColumns()
+    .then((result) => res.status(200).send(result))
+    .catch(next);
+});
+
 router.get('/patientlist', async (req, res, next) => {
-  logging(LOGTYPE.DEBUG, '呼び出し', 'router', '/patientlist', getUsernameFromRequest(req));
+  logging(
+    LOGTYPE.DEBUG,
+    '呼び出し',
+    'router',
+    '/patientlist',
+    getUsernameFromRequest(req)
+  );
   // 権限の確認
   const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.view);
   if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
@@ -242,13 +307,25 @@ router.get('/patientlist', async (req, res, next) => {
     }
     // 権限が無い場合
     else {
-      logging(LOGTYPE.ERROR, '権限エラー', 'router', '/patientlist', getUsernameFromRequest(req));
+      logging(
+        LOGTYPE.ERROR,
+        '権限エラー',
+        'router',
+        '/patientlist',
+        getUsernameFromRequest(req)
+      );
     }
   }
 });
 
 router.delete('/deleteCase/:caseId', async (req, res, next) => {
-  logging(LOGTYPE.DEBUG, '呼び出し', 'router', '/deleteCase', getUsernameFromRequest(req));
+  logging(
+    LOGTYPE.DEBUG,
+    '呼び出し',
+    'router',
+    '/deleteCase',
+    getUsernameFromRequest(req)
+  );
   // 権限の確認
   const authResult: ApiReturnObject = await checkAuth(
     getToken(req),
@@ -264,7 +341,13 @@ router.delete('/deleteCase/:caseId', async (req, res, next) => {
   }
   // 権限が無い場合
   else {
-    logging(LOGTYPE.ERROR, '権限エラー', 'router', '/deleteCase', getUsernameFromRequest(req));
+    logging(
+      LOGTYPE.ERROR,
+      '権限エラー',
+      'router',
+      '/deleteCase',
+      getUsernameFromRequest(req)
+    );
   }
 });
 
@@ -279,7 +362,13 @@ router.delete('/deleteCase/:caseId', async (req, res, next) => {
  */
 
 router.post('/registrationCaseAndDocument/', async (req, res, next) => {
-  logging(LOGTYPE.DEBUG, '呼び出し', 'router', '/registrationCaseAndDocument', getUsernameFromRequest(req));
+  logging(
+    LOGTYPE.DEBUG,
+    '呼び出し',
+    'router',
+    '/registrationCaseAndDocument',
+    getUsernameFromRequest(req)
+  );
   // 権限の確認
   const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.add);
   if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
@@ -293,12 +382,24 @@ router.post('/registrationCaseAndDocument/', async (req, res, next) => {
   }
   // 権限が無い場合
   else {
-    logging(LOGTYPE.ERROR, '権限エラー', 'router', '/registrationCaseAndDocument', getUsernameFromRequest(req));
+    logging(
+      LOGTYPE.ERROR,
+      '権限エラー',
+      'router',
+      '/registrationCaseAndDocument',
+      getUsernameFromRequest(req)
+    );
   }
 });
 
 router.get('/getCaseAndDocument/:caseId', async (req, res, next) => {
-  logging(LOGTYPE.DEBUG, '呼び出し', 'router', '/getCaseAndDocument', getUsernameFromRequest(req));
+  logging(
+    LOGTYPE.DEBUG,
+    '呼び出し',
+    'router',
+    '/getCaseAndDocument',
+    getUsernameFromRequest(req)
+  );
   // 権限の確認
   const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.view);
   if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
@@ -311,7 +412,13 @@ router.get('/getCaseAndDocument/:caseId', async (req, res, next) => {
   }
   // 権限が無い場合
   else {
-    logging(LOGTYPE.ERROR, '権限エラー', 'router', '/getCaseAndDocument', getUsernameFromRequest(req));
+    logging(
+      LOGTYPE.ERROR,
+      '権限エラー',
+      'router',
+      '/getCaseAndDocument',
+      getUsernameFromRequest(req)
+    );
   }
 });
 
@@ -322,30 +429,45 @@ router.get('/getCaseAndDocument/:caseId', async (req, res, next) => {
 /**
  * システム設定用 start
  */
- router.get('/getSettings/', async (req, res, next) => {
+router.get('/getSettings/', async (req, res, next) => {
   logging(LOGTYPE.DEBUG, '呼び出し', 'router', '/getSettings');
   // ログイン画面でも使用するので権限を設定しない
   await getSettings()
-  .then((result) => res.status(200).send(result))
-  .catch(next);
+    .then((result) => res.status(200).send(result))
+    .catch(next);
 });
 
 router.post('/updateSettings/', async (req, res, next) => {
-  logging(LOGTYPE.DEBUG, '呼び出し', 'router', '/updateSettings', getUsernameFromRequest(req));
+  logging(
+    LOGTYPE.DEBUG,
+    '呼び出し',
+    'router',
+    '/updateSettings',
+    getUsernameFromRequest(req)
+  );
   // 権限の確認
-  const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.systemManage);
+  const authResult: ApiReturnObject = await checkAuth(
+    getToken(req),
+    roll.systemManage
+  );
   if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
     res.status(200).send(authResult);
   }
   if (authResult.body) {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     updateSettings(req.body.data as settings)
-    .then((result) => res.status(200).send(result))
-    .catch(next);
+      .then((result) => res.status(200).send(result))
+      .catch(next);
   }
   // 権限が無い場合
   else {
-    logging(LOGTYPE.ERROR, '権限エラー', 'router', '/updateSettings', getUsernameFromRequest(req));
+    logging(
+      LOGTYPE.ERROR,
+      '権限エラー',
+      'router',
+      '/updateSettings',
+      getUsernameFromRequest(req)
+    );
   }
 });
 /**
@@ -355,32 +477,39 @@ router.post('/updateSettings/', async (req, res, next) => {
 /**
  * プラグイン用 start
  */
-router.post('/json2schema/', (req, res, next) => {
-  logging(LOGTYPE.DEBUG, '呼び出し', 'router', '/json2schema');
-  jsonToSchema()
-    .then((result) => res.status(200).send(result))
-    .catch(next);
-});
-
 // eslint-disable-next-line
 router.post('/upload/', upload.single('schemas'), async (req, res, next) => {
-  logging(LOGTYPE.DEBUG, '呼び出し', 'router', '/upload', getUsernameFromRequest(req));
+  logging(
+    LOGTYPE.DEBUG,
+    '呼び出し',
+    'router',
+    '/upload',
+    getUsernameFromRequest(req)
+  );
   // 権限の確認
-  const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.systemManage);
+  const authResult: ApiReturnObject = await checkAuth(
+    getToken(req),
+    roll.systemManage
+  );
   if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
     res.status(200).send(authResult);
   }
   if (authResult.body) {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     uploadZipFile(req.file)
-    .then((result) => res.status(200).send(result))
-    .catch(next);
+      .then((result) => res.status(200).send(result))
+      .catch(next);
   }
   // 権限が無い場合
   else {
-    logging(LOGTYPE.ERROR, '権限エラー', 'router', '/upload', getUsernameFromRequest(req));
+    logging(
+      LOGTYPE.ERROR,
+      '権限エラー',
+      'router',
+      '/upload',
+      getUsernameFromRequest(req)
+    );
   }
-
 });
 
 // eslint-disable-next-line
