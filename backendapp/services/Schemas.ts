@@ -101,27 +101,37 @@ export const getSchemaTree = async (): Promise<ApiReturnObject> => {
     const rootIds = rootIdObject.body as number[];
 
     // 保存用オブジェクト
-    const schemaTrees:treeSchema[] = [];
+    const schemaTrees: treeSchema[] = [];
 
     // ルートスキーマを順番にツリー用に処理する
     for (let index = 0; index < rootIds.length; index++) {
       const rootId = rootIds[index];
-      
-      // 対象のルートスキーマIDに一致するスキーマレコードを取得
-      const rootSchema = allSchemas.find(schema => schema.schema_id === rootId);
 
-      if(rootSchema){
+      // 対象のルートスキーマIDに一致するスキーマレコードを取得
+      const rootSchema = allSchemas.find(
+        (schema) => schema.schema_id === rootId
+      );
+
+      if (rootSchema) {
         // スキーマレコードが取得できた場合、ツリー用に処理する
-        const rootSchemaForTree = schemaRecord2SchemaTree(rootSchema, allSchemas);
-        schemaTrees.push(rootSchemaForTree)
+        const rootSchemaForTree = schemaRecord2SchemaTree(
+          rootSchema,
+          allSchemas
+        );
+        schemaTrees.push(rootSchemaForTree);
       }
     }
     return { statusNum: RESULT.NORMAL_TERMINATION, body: schemaTrees };
   } catch (e) {
-    logging(LOGTYPE.ERROR, `エラー発生 ${(e as Error).message}`, 'Schemas', 'getScemaTree');
+    logging(
+      LOGTYPE.ERROR,
+      `エラー発生 ${(e as Error).message}`,
+      'Schemas',
+      'getScemaTree'
+    );
     return { statusNum: RESULT.ABNORMAL_TERMINATION, body: [] };
   }
-}
+};
 
 /**
  * スキーマレコード1つと全スキーマを渡すとツリー形式で下位スキーマを取得した状態で返す
@@ -129,12 +139,19 @@ export const getSchemaTree = async (): Promise<ApiReturnObject> => {
  * @param allSchemas 全スキーマのリスト
  * @returns ツリー形式に変換された対象のスキーマレコード
  */
-export const schemaRecord2SchemaTree = (schemarRecord: schemaRecord, allSchemas: schemaRecord[]):treeSchema => {
-  const subSchemaList = allSchemas.filter(schema => schemarRecord.subschema.includes(schema.schema_id));
-  const childSchemaList = allSchemas.filter(schema => schemarRecord.child_schema.includes(schema.schema_id));
+export const schemaRecord2SchemaTree = (
+  schemarRecord: schemaRecord,
+  allSchemas: schemaRecord[]
+): treeSchema => {
+  const subSchemaList = allSchemas.filter((schema) =>
+    schemarRecord.subschema.includes(schema.schema_id)
+  );
+  const childSchemaList = allSchemas.filter((schema) =>
+    schemarRecord.child_schema.includes(schema.schema_id)
+  );
 
-  const subSchemaListWithTree:treeSchema[] = [];
-  const childSchemaListWithTree:treeSchema[] = [];
+  const subSchemaListWithTree: treeSchema[] = [];
+  const childSchemaListWithTree: treeSchema[] = [];
 
   for (let index = 0; index < subSchemaList.length; index++) {
     const schema = subSchemaList[index];
@@ -145,14 +162,16 @@ export const schemaRecord2SchemaTree = (schemarRecord: schemaRecord, allSchemas:
     const schema = childSchemaList[index];
     childSchemaListWithTree.push(schemaRecord2SchemaTree(schema, allSchemas));
   }
-  
+
   return {
     schema_id: schemarRecord.schema_id,
-    schema_title: schemarRecord.title + (schemarRecord.subtitle.length > 0 ? (' ' + schemarRecord.subtitle):''),
+    schema_title:
+      schemarRecord.title +
+      (schemarRecord.subtitle.length > 0 ? ' ' + schemarRecord.subtitle : ''),
     subschema: subSchemaListWithTree,
-    childschema: childSchemaListWithTree
-  }
-} 
+    childschema: childSchemaListWithTree,
+  };
+};
 // 検索用セレクトボックス取得APIのbody 他検索が増えたらプロパティを増やす
 export type searchColumnsFromApi = {
   cancerTypes: string[];

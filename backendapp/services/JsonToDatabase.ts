@@ -955,26 +955,25 @@ export const schemaListUpdate = async (errorMessages: string[]) => {
 
     // 子スキーマのリストから重複を削除
     // eslint-disable-next-line
-    const newChildSchemaList = lodash.uniq(childSchemaList).filter(id => !subSchemaList.includes(id));
+    const newChildSchemaList = lodash
+      .uniq(childSchemaList)
+      .filter((id) => !subSchemaList.includes(id));
 
-    let query = 
-      `UPDATE jesgo_document_schema SET 
+    let query = `UPDATE jesgo_document_schema SET 
       inherit_schema = '{${numArrayCast2Pg(inheritSchemaList)}}', 
       base_schema = ${undefined2Null(baseSchemaId)}`;
 
-    if(!lodash.isEqual(subSchemaList, row.default_sub_s)){
-      query += 
-        `, subschema = '{${numArrayCast2Pg(subSchemaList)}}'
-         , subschema_default = '{${numArrayCast2Pg(subSchemaList)}}'`
+    if (!lodash.isEqual(subSchemaList, row.default_sub_s)) {
+      query += `, subschema = '{${numArrayCast2Pg(subSchemaList)}}'
+         , subschema_default = '{${numArrayCast2Pg(subSchemaList)}}'`;
     }
 
-    if(!lodash.isEqual(newChildSchemaList, row.default_child_s)){
-      query += 
-        `, child_schema = '{${numArrayCast2Pg(newChildSchemaList)}}'
-         , child_schema_default = '{${numArrayCast2Pg(newChildSchemaList)}}'`
+    if (!lodash.isEqual(newChildSchemaList, row.default_child_s)) {
+      query += `, child_schema = '{${numArrayCast2Pg(newChildSchemaList)}}'
+         , child_schema_default = '{${numArrayCast2Pg(newChildSchemaList)}}'`;
     }
 
-    query += ' WHERE schema_id = $1'
+    query += ' WHERE schema_id = $1';
 
     await dbAccess.query(query, [row.schema_id]);
   }
