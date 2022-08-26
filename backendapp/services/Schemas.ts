@@ -1,6 +1,7 @@
 import { logging, LOGTYPE } from '../logic/Logger';
 import { ApiReturnObject, RESULT } from '../logic/ApiCommon';
 import { DbAccess } from '../logic/DbAccess';
+import { JSONSchema7 } from './JsonToDatabase';
 
 export interface getJsonSchemaBody {
   ids: number[] | undefined;
@@ -8,6 +9,25 @@ export interface getJsonSchemaBody {
 
 export type records = {
   [key: string]: schemaRecord;
+};
+
+// 症例情報の定義
+// フロントのstore/schemaDataReducer.tsと同じものを使用するため
+// どちらかに更新が入ったらもう片方も更新すること
+export type JesgoDocumentSchema = {
+  schema_id: number;
+  schema_id_string: string;
+  title: string;
+  subtitle: string;
+  document_schema: JSONSchema7;
+  subschema: number[];
+  child_schema: number[];
+  inherit_schema: number[];
+  base_schema: number | null;
+  version_major: number;
+  schema_primary_id: number;
+  subschema_default: number[];
+  child_schema_default: number[];
 };
 
 export type schemaRecord = {
@@ -172,6 +192,37 @@ export const schemaRecord2SchemaTree = (
     childschema: childSchemaListWithTree,
   };
 };
+
+export const updateSchemas = async (schemas:JesgoDocumentSchema[]): Promise<ApiReturnObject> => {
+  logging(LOGTYPE.DEBUG, `呼び出し`, 'Schemas', 'updateChildSchemaga');
+  console.log("updateschema")
+  console.log(schemas);
+  const dbAccess = new DbAccess();
+  try {
+    await dbAccess.connectWithConf();
+    
+    for(const schema of schemas){
+      // 現状は子スキーマのみ、必要に応じて追加
+      console.log("'UPDATE jesgo_document_schema SET child_schema = $1 WHERE schema_primary_id = $2'")
+      console.log(schema.child_schema)
+      console.log(schema.schema_primary_id)
+      await dbAccess.query('UPDATE jesgo_document_schema SET child_schema = $1 WHERE schema_primary_id = $2', [schema.child_schema, schema.schema_primary_id]);
+    }
+
+    return { statusNum: RESULT.NORMAL_TERMINATION, body: null };
+  } catch (e) {
+    logging(
+      LOGTYPE.ERROR,
+      `エラー発生 ${(e as Error).message}`,
+      'Schemas',
+      'getScemaTree'
+    );
+    return { statusNum: RESULT.ABNORMAL_TERMINATION, body: null };
+  } finally{
+    await dbAccess.end();
+  }
+};
+
 // 検索用セレクトボックス取得APIのbody 他検索が増えたらプロパティを増やす
 export type searchColumnsFromApi = {
   cancerTypes: string[];
