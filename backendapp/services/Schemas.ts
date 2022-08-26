@@ -193,20 +193,20 @@ export const schemaRecord2SchemaTree = (
   };
 };
 
-export const updateSchemas = async (schemas:JesgoDocumentSchema[]): Promise<ApiReturnObject> => {
+export const updateSchemas = async (
+  schemas: JesgoDocumentSchema[]
+): Promise<ApiReturnObject> => {
   logging(LOGTYPE.DEBUG, `呼び出し`, 'Schemas', 'updateChildSchemaga');
-  console.log("updateschema")
-  console.log(schemas);
   const dbAccess = new DbAccess();
   try {
     await dbAccess.connectWithConf();
-    
-    for(const schema of schemas){
+
+    for (const schema of schemas) {
       // 現状は子スキーマのみ、必要に応じて追加
-      console.log("'UPDATE jesgo_document_schema SET child_schema = $1 WHERE schema_primary_id = $2'")
-      console.log(schema.child_schema)
-      console.log(schema.schema_primary_id)
-      await dbAccess.query('UPDATE jesgo_document_schema SET child_schema = $1 WHERE schema_primary_id = $2', [schema.child_schema, schema.schema_primary_id]);
+      await dbAccess.query(
+        'UPDATE jesgo_document_schema SET child_schema = $1 WHERE schema_primary_id = $2',
+        [schema.child_schema, schema.schema_primary_id]
+      );
     }
 
     return { statusNum: RESULT.NORMAL_TERMINATION, body: null };
@@ -218,7 +218,7 @@ export const updateSchemas = async (schemas:JesgoDocumentSchema[]): Promise<ApiR
       'getScemaTree'
     );
     return { statusNum: RESULT.ABNORMAL_TERMINATION, body: null };
-  } finally{
+  } finally {
     await dbAccess.end();
   }
 };
