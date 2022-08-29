@@ -85,18 +85,14 @@ export const getJsonSchema = async (): Promise<ApiReturnObject> => {
 export const getRootSchemaIds = async (): Promise<ApiReturnObject> => {
   logging(LOGTYPE.DEBUG, `呼び出し`, 'Schemas', 'getRootSchemaIds');
   try {
-    const query = `select DISTINCT(schema_id) from view_latest_schema where document_schema->>'jesgo:parentschema' like '%"/"%';`;
+    const query = `SELECT subschema FROM view_latest_schema WHERE schema_id = 0`;
 
     const dbAccess = new DbAccess();
     await dbAccess.connectWithConf();
-    const ret = (await dbAccess.query(query)) as schemaRecord[];
+    const ret = (await dbAccess.query(query)) as {subschema:number[]}[];
     await dbAccess.end();
 
-    const ids: number[] = [];
-    for (let index = 0; index < ret.length; index++) {
-      const record = ret[index];
-      ids.push(record.schema_id);
-    }
+    const ids = ret[0].subschema;
     return { statusNum: RESULT.NORMAL_TERMINATION, body: ids };
   } catch (e) {
     logging(
