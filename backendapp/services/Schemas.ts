@@ -166,6 +166,10 @@ export const schemaRecord2SchemaTree = (
     schemarRecord.child_schema.includes(schema.schema_id)
   );
 
+  // サブスキーマ、子スキーマをDBに保存されている順番に並び替え
+  subSchemaList.sort((a, b) => schemarRecord.subschema.indexOf(a.schema_id) - schemarRecord.subschema.indexOf(b.schema_id));
+  childSchemaList.sort((a, b) => schemarRecord.child_schema.indexOf(a.schema_id) - schemarRecord.child_schema.indexOf(b.schema_id));
+
   const subSchemaListWithTree: treeSchema[] = [];
   const childSchemaListWithTree: treeSchema[] = [];
 
@@ -198,10 +202,10 @@ export const updateSchemas = async (
     await dbAccess.connectWithConf();
 
     for (const schema of schemas) {
-      // 現状は子スキーマのみ、必要に応じて追加
+      // 現状はサブスキーマ、子スキーマのみ、必要に応じて追加
       await dbAccess.query(
-        'UPDATE jesgo_document_schema SET child_schema = $1 WHERE schema_primary_id = $2',
-        [schema.child_schema, schema.schema_primary_id]
+        'UPDATE jesgo_document_schema SET subschema = $1, child_schema = $2 WHERE schema_primary_id = $3',
+        [schema.subschema, schema.child_schema, schema.schema_primary_id]
       );
     }
 
