@@ -19,4 +19,4 @@ INSERT INTO jesgo_system_setting VALUES(1, '{"setting": {"hisid" : {"alignment":
 INSERT INTO jesgo_document_schema (schema_primary_id, schema_id, schema_id_string, title, subtitle, document_schema, 
 uniqueness, hidden, subschema, subschema_default, child_schema, child_schema_default, base_version_major, 
 valid_from, valid_until, author, version_major, version_minor, plugin_id, inherit_schema, base_schema) 
-VALUES (0, 0, NULL, '', '', '{}', TRUE, TRUE, '{}', '{}', '{}', '{}', 1, '1970-01-01', NULL, 'system', 1, 0, NULL, '{}', NULL);
+VALUES (0, 0, NULL, 'JESGOシステム', '', '{}', TRUE, TRUE, '{}', '{}', '{}', '{}', 1, '1970-01-01', NULL, 'system', 1, 0, NULL, '{}', NULL);
