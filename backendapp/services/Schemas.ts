@@ -25,6 +25,7 @@ export type JesgoDocumentSchema = {
   inherit_schema: number[];
   base_schema: number | null;
   version_major: number;
+  version_minor: number;
   schema_primary_id: number;
   subschema_default: number[];
   child_schema_default: number[];
