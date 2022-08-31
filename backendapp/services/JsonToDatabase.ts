@@ -768,7 +768,7 @@ export const schemaListUpdate = async (errorMessages: string[]) => {
   const parentSchemas: parentSchemas[] = (await dbAccess.query(
     `SELECT schema_id, 
     document_schema->'jesgo:parentschema' as parent_schemas
-    FROM jesgo_document_schema`
+    FROM jesgo_document_schema WHERE schema_id <> 0`
   )) as parentSchemas[];
   for (let i = 0; i < parentSchemas.length; i++) {
     if (parentSchemas[i].parent_schemas) {
@@ -781,7 +781,7 @@ export const schemaListUpdate = async (errorMessages: string[]) => {
               ? `${splitedId[0]}/*`
               : `${splitedId[0]}[^/]*${splitedId[1]}$`;
           const schemaIds: schemaId[] = (await dbAccess.query(
-            'SELECT schema_id FROM jesgo_document_schema WHERE schema_id_string ~ $1',
+            'SELECT schema_id FROM jesgo_document_schema WHERE schema_id_string ~ $1 AND schema_id <> 0',
             [searchId]
           )) as schemaId[];
           for (let k = 0; k < schemaIds.length; k++) {
@@ -800,7 +800,7 @@ export const schemaListUpdate = async (errorMessages: string[]) => {
           }
         } else {
           const schemaIds: schemaId[] = (await dbAccess.query(
-            'SELECT schema_id FROM jesgo_document_schema WHERE schema_id_string = $1',
+            'SELECT schema_id FROM jesgo_document_schema WHERE schema_id_string = $1 AND schema_id <> 0',
             [parentSchemas[i].parent_schemas[j]]
           )) as schemaId[];
           for (let k = 0; k < schemaIds.length; k++) {
@@ -827,6 +827,8 @@ export const schemaListUpdate = async (errorMessages: string[]) => {
     schema_id_string: string;
     sub_s: string[];
     child_s: string[];
+    default_sub_s: number[];
+    default_child_s: number[];
   };
   type schemaId = { schema_id: number };
 
@@ -835,8 +837,11 @@ export const schemaListUpdate = async (errorMessages: string[]) => {
     `SELECT schema_id, 
     schema_id_string, 
     document_schema->'jesgo:subschema' as sub_s, 
-    document_schema->'jesgo:childschema' as child_s 
-    FROM jesgo_document_schema`
+    document_schema->'jesgo:childschema' as child_s, 
+    subschema_default as default_sub_s, 
+    child_schema_default as default_child_s 
+    FROM jesgo_document_schema 
+    WHERE schema_id <> 0`
   )) as dbRow[];
 
   const candidateBaseSchemas = dbRows.slice(0);
@@ -856,7 +861,7 @@ export const schemaListUpdate = async (errorMessages: string[]) => {
               ? `${splitedId[0]}/*`
               : `${splitedId[0]}[^/]*${splitedId[1]}$`;
           const schemaIds: schemaId[] = (await dbAccess.query(
-            'SELECT schema_id FROM jesgo_document_schema WHERE schema_id_string ~ $1',
+            'SELECT schema_id FROM jesgo_document_schema WHERE schema_id_string ~ $1 AND schema_id <> 0',
             [searchId]
           )) as schemaId[];
           if (schemaIds.length > 0) {
@@ -864,7 +869,7 @@ export const schemaListUpdate = async (errorMessages: string[]) => {
           }
         } else {
           const schemaIds: schemaId[] = (await dbAccess.query(
-            'SELECT schema_id FROM jesgo_document_schema WHERE schema_id_string = $1',
+            'SELECT schema_id FROM jesgo_document_schema WHERE schema_id_string = $1 AND schema_id <> 0',
             [row.sub_s[j]]
           )) as schemaId[];
           if (schemaIds.length > 0) {
@@ -883,7 +888,7 @@ export const schemaListUpdate = async (errorMessages: string[]) => {
               ? `${splitedId[0]}/*`
               : `${splitedId[0]}[^/]*${splitedId[1]}$`;
           const schemaIds: schemaId[] = (await dbAccess.query(
-            'SELECT schema_id FROM jesgo_document_schema WHERE schema_id_string ~ $1',
+            'SELECT schema_id FROM jesgo_document_schema WHERE schema_id_string ~ $1 AND schema_id <> 0',
             [searchId]
           )) as schemaId[];
           if (schemaIds.length > 0) {
@@ -891,7 +896,7 @@ export const schemaListUpdate = async (errorMessages: string[]) => {
           }
         } else {
           const schemaIds: schemaId[] = (await dbAccess.query(
-            'SELECT schema_id FROM jesgo_document_schema WHERE schema_id_string = $1',
+            'SELECT schema_id FROM jesgo_document_schema WHERE schema_id_string = $1 AND schema_id <> 0',
             [row.child_s[k]]
           )) as schemaId[];
           if (
@@ -917,7 +922,7 @@ export const schemaListUpdate = async (errorMessages: string[]) => {
     if (row.schema_id_string !== null) {
       // 自身より下層のschema_id_stringを持つスキーマを継承スキーマに追加
       const inheritSchemaIds: schemaId[] = (await dbAccess.query(
-        `SELECT schema_id FROM jesgo_document_schema WHERE schema_id_string like '${row.schema_id_string}/%'`,
+        `SELECT schema_id FROM jesgo_document_schema WHERE schema_id_string like '${row.schema_id_string}/%' AND schema_id <> 0`,
         []
       )) as schemaId[];
       for (let m = 0; m < inheritSchemaIds.length; m++) {
@@ -954,21 +959,48 @@ export const schemaListUpdate = async (errorMessages: string[]) => {
     const newChildSchemaList = lodash
       .uniq(childSchemaList)
       .filter((id) => !subSchemaList.includes(id));
-    await dbAccess.query(
-      `UPDATE jesgo_document_schema SET subschema = '{${numArrayCast2Pg(
-        subSchemaList
-      )}}', child_schema = '{${numArrayCast2Pg(
-        newChildSchemaList
-      )}}', inherit_schema = '{${numArrayCast2Pg(
-        inheritSchemaList
-      )}}', base_schema = ${undefined2Null(baseSchemaId)} WHERE schema_id = $1`,
-      [row.schema_id]
-    );
+
+    let query = `UPDATE jesgo_document_schema SET 
+      inherit_schema = '{${numArrayCast2Pg(inheritSchemaList)}}', 
+      base_schema = ${undefined2Null(baseSchemaId)}`;
+
+    if (!lodash.isEqual(subSchemaList, row.default_sub_s)) {
+      query += `, subschema = '{${numArrayCast2Pg(subSchemaList)}}'
+         , subschema_default = '{${numArrayCast2Pg(subSchemaList)}}'`;
+    }
+
+    if (!lodash.isEqual(newChildSchemaList, row.default_child_s)) {
+      query += `, child_schema = '{${numArrayCast2Pg(newChildSchemaList)}}'
+         , child_schema_default = '{${numArrayCast2Pg(newChildSchemaList)}}'`;
+    }
+
+    query += ' WHERE schema_id = $1';
+
+    await dbAccess.query(query, [row.schema_id]);
   }
 
   // スキーマの更新に合わせて検索用セレクトボックスも更新する
   await updateSearchColumn();
+
+  // スキーマの更新に合わせてルートスキーマの内容も更新する
+  await updateRootSchemaList();
 };
+
+const updateRootSchemaList = async () =>{
+  const dbRows = await dbAccess.query(`SELECT ARRAY_AGG(DISTINCT(schema_id)) as root_ids FROM view_latest_schema WHERE document_schema->>'jesgo:parentschema' like '%"/"%';`) as {root_ids:number[]}[];
+  const rootSchemaIdArray = dbRows[0].root_ids;
+  const oldDbRows = await dbAccess.query('SELECT subschema_default FROM jesgo_document_schema WHERE schema_id = 0') as {subschema_default:number[]}[];
+  const oldRootSchemaIdArray = oldDbRows[0].subschema_default;
+
+  // 破壊的ソートを行う前にアップデート用の変数を用意しておく
+  const newRootIds = numArrayCast2Pg(rootSchemaIdArray);
+  
+  // 現在DBに保存されているルートスキーマのサブスキーマ初期設定が、最新の物と等しいかを確認する
+  if(!lodash.isEqual(rootSchemaIdArray.sort(), oldRootSchemaIdArray.sort())){
+    // 等しくなければ情報を更新する
+    await dbAccess.query(`UPDATE jesgo_document_schema SET subschema = '{${newRootIds}}', subschema_default = '{${newRootIds}}' WHERE schema_id = 0`);
+  }
+}
 
 /** JSONSchema7のkeyと値を全て取得 */
 export const getItemsAndNames = (item: JSONSchema7) => {
@@ -1030,6 +1062,7 @@ export const updateSearchColumn = async (): Promise<void> => {
     OR document_schema->>'properties' like '%${escapeText(
       jesgo_tagging(Const.JESGO_TAG.CANCER_MINOR)
     )}%' 
+    AND schema_id <> 0 
     ORDER BY schema_id_string;`
   )) as dbRow[];
 
