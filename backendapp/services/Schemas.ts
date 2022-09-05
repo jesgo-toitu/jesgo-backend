@@ -90,7 +90,7 @@ export const getRootSchemaIds = async (): Promise<ApiReturnObject> => {
 
     const dbAccess = new DbAccess();
     await dbAccess.connectWithConf();
-    const ret = (await dbAccess.query(query)) as {subschema:number[]}[];
+    const ret = (await dbAccess.query(query)) as { subschema: number[] }[];
     await dbAccess.end();
 
     const ids = ret[0].subschema;
@@ -168,8 +168,16 @@ export const schemaRecord2SchemaTree = (
   );
 
   // サブスキーマ、子スキーマをDBに保存されている順番に並び替え
-  subSchemaList.sort((a, b) => schemarRecord.subschema.indexOf(a.schema_id) - schemarRecord.subschema.indexOf(b.schema_id));
-  childSchemaList.sort((a, b) => schemarRecord.child_schema.indexOf(a.schema_id) - schemarRecord.child_schema.indexOf(b.schema_id));
+  subSchemaList.sort(
+    (a, b) =>
+      schemarRecord.subschema.indexOf(a.schema_id) -
+      schemarRecord.subschema.indexOf(b.schema_id)
+  );
+  childSchemaList.sort(
+    (a, b) =>
+      schemarRecord.child_schema.indexOf(a.schema_id) -
+      schemarRecord.child_schema.indexOf(b.schema_id)
+  );
 
   const subSchemaListWithTree: treeSchema[] = [];
   const childSchemaListWithTree: treeSchema[] = [];

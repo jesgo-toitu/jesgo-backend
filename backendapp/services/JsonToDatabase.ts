@@ -983,21 +983,27 @@ export const schemaListUpdate = async (errorMessages: string[]) => {
   await updateRootSchemaList();
 };
 
-const updateRootSchemaList = async () =>{
-  const dbRows = await dbAccess.query(`SELECT ARRAY_AGG(DISTINCT(schema_id)) as root_ids FROM view_latest_schema WHERE document_schema->>'jesgo:parentschema' like '%"/"%';`) as {root_ids:number[]}[];
+const updateRootSchemaList = async () => {
+  const dbRows = (await dbAccess.query(
+    `SELECT ARRAY_AGG(DISTINCT(schema_id)) as root_ids FROM view_latest_schema WHERE document_schema->>'jesgo:parentschema' like '%"/"%';`
+  )) as { root_ids: number[] }[];
   const rootSchemaIdArray = dbRows[0].root_ids;
-  const oldDbRows = await dbAccess.query('SELECT subschema_default FROM jesgo_document_schema WHERE schema_id = 0') as {subschema_default:number[]}[];
+  const oldDbRows = (await dbAccess.query(
+    'SELECT subschema_default FROM jesgo_document_schema WHERE schema_id = 0'
+  )) as { subschema_default: number[] }[];
   const oldRootSchemaIdArray = oldDbRows[0].subschema_default;
 
   // 破壊的ソートを行う前にアップデート用の変数を用意しておく
   const newRootIds = numArrayCast2Pg(rootSchemaIdArray);
-  
+
   // 現在DBに保存されているルートスキーマのサブスキーマ初期設定が、最新の物と等しいかを確認する
-  if(!lodash.isEqual(rootSchemaIdArray.sort(), oldRootSchemaIdArray.sort())){
+  if (!lodash.isEqual(rootSchemaIdArray.sort(), oldRootSchemaIdArray.sort())) {
     // 等しくなければ情報を更新する
-    await dbAccess.query(`UPDATE jesgo_document_schema SET subschema = '{${newRootIds}}', subschema_default = '{${newRootIds}}' WHERE schema_id = 0`);
+    await dbAccess.query(
+      `UPDATE jesgo_document_schema SET subschema = '{${newRootIds}}', subschema_default = '{${newRootIds}}' WHERE schema_id = 0`
+    );
   }
-}
+};
 
 /** JSONSchema7のkeyと値を全て取得 */
 export const getItemsAndNames = (item: JSONSchema7) => {
