@@ -339,7 +339,7 @@ export const hasInheritError = async (
 ): Promise<boolean> => {
   logging(LOGTYPE.DEBUG, `呼び出し`, 'JsonToDatabase', 'hasInheritError');
   const results = (await dbAccess.query(
-    `SELECT uniqueness FROM jesgo_document_schema WHERE schema_id IN (${id1}, ${id2})`
+    `SELECT uniqueness FROM view_latest_schema WHERE schema_id IN (${id1}, ${id2})`
   )) as { uniqueness: boolean; schema_id_string: string }[];
   if (results[0].uniqueness === results[1].uniqueness) {
     // 継承先と基底の間でjesgo:uniqueの値が一緒であればエラー無しを返す
@@ -840,7 +840,7 @@ export const schemaListUpdate = async (errorMessages: string[]) => {
     document_schema->'jesgo:childschema' as child_s, 
     subschema_default as default_sub_s, 
     child_schema_default as default_child_s 
-    FROM jesgo_document_schema 
+    FROM view_latest_schema 
     WHERE schema_id <> 0`
   )) as dbRow[];
 
@@ -922,7 +922,7 @@ export const schemaListUpdate = async (errorMessages: string[]) => {
     if (row.schema_id_string !== null) {
       // 自身より下層のschema_id_stringを持つスキーマを継承スキーマに追加
       const inheritSchemaIds: schemaId[] = (await dbAccess.query(
-        `SELECT schema_id FROM jesgo_document_schema WHERE schema_id_string like '${row.schema_id_string}/%' AND schema_id <> 0`,
+        `SELECT schema_id FROM view_latest_schema WHERE schema_id_string like '${row.schema_id_string}/%' AND schema_id <> 0`,
         []
       )) as schemaId[];
       for (let m = 0; m < inheritSchemaIds.length; m++) {
