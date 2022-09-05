@@ -29,6 +29,7 @@ export type JesgoDocumentSchema = {
   schema_primary_id: number;
   subschema_default: number[];
   child_schema_default: number[];
+  inherit_schema_default: number[];
 };
 
 export type schemaRecord = {
@@ -44,6 +45,7 @@ export type schemaRecord = {
   subschema_default: number[];
   child_schema_default: number[];
   inherit_schema: number[];
+  inherit_schema_default: number[];
   base_schema: number | null;
   base_version_major: number;
   valid_from: Date;
@@ -59,6 +61,7 @@ export type treeSchema = {
   schema_title: string;
   subschema: treeSchema[];
   childschema: treeSchema[];
+  inheritschema: treeSchema[];
 };
 
 export const getJsonSchema = async (): Promise<ApiReturnObject> => {
@@ -166,13 +169,18 @@ export const schemaRecord2SchemaTree = (
   const childSchemaList = allSchemas.filter((schema) =>
     schemarRecord.child_schema.includes(schema.schema_id)
   );
+  const inheritSchemaList = allSchemas.filter((schema) =>
+    schemarRecord.inherit_schema.includes(schema.schema_id)
+  );
 
   // サブスキーマ、子スキーマをDBに保存されている順番に並び替え
   subSchemaList.sort((a, b) => schemarRecord.subschema.indexOf(a.schema_id) - schemarRecord.subschema.indexOf(b.schema_id));
   childSchemaList.sort((a, b) => schemarRecord.child_schema.indexOf(a.schema_id) - schemarRecord.child_schema.indexOf(b.schema_id));
+  inheritSchemaList.sort((a, b) => schemarRecord.inherit_schema.indexOf(a.schema_id) - schemarRecord.inherit_schema.indexOf(b.schema_id));
 
   const subSchemaListWithTree: treeSchema[] = [];
   const childSchemaListWithTree: treeSchema[] = [];
+  const inheritSchemaListWithTree: treeSchema[] = [];
 
   for (let index = 0; index < subSchemaList.length; index++) {
     const schema = subSchemaList[index];
@@ -184,6 +192,11 @@ export const schemaRecord2SchemaTree = (
     childSchemaListWithTree.push(schemaRecord2SchemaTree(schema, allSchemas));
   }
 
+  for (let index = 0; index < inheritSchemaList.length; index++) {
+    const schema = inheritSchemaList[index];
+    inheritSchemaListWithTree.push(schemaRecord2SchemaTree(schema, allSchemas));
+  }
+
   return {
     schema_id: schemarRecord.schema_id,
     schema_title:
@@ -191,6 +204,7 @@ export const schemaRecord2SchemaTree = (
       (schemarRecord.subtitle.length > 0 ? ' ' + schemarRecord.subtitle : ''),
     subschema: subSchemaListWithTree,
     childschema: childSchemaListWithTree,
+    inheritschema: inheritSchemaListWithTree,
   };
 };
 
@@ -203,10 +217,10 @@ export const updateSchemas = async (
     await dbAccess.connectWithConf();
 
     for (const schema of schemas) {
-      // 現状はサブスキーマ、子スキーマのみ、必要に応じて追加
+      // 現状はサブスキーマ、子スキーマのみ、継承スキーマのみ必要に応じて追加
       await dbAccess.query(
-        'UPDATE jesgo_document_schema SET subschema = $1, child_schema = $2 WHERE schema_primary_id = $3',
-        [schema.subschema, schema.child_schema, schema.schema_primary_id]
+        'UPDATE jesgo_document_schema SET subschema = $1, child_schema = $2, inherit_schema = $3 WHERE schema_primary_id = $4',
+        [schema.subschema, schema.child_schema, schema.inherit_schema, schema.schema_primary_id]
       );
     }
 
