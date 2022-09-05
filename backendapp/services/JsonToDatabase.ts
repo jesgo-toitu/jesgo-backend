@@ -939,16 +939,13 @@ export const schemaListUpdate = async (errorMessages: string[]) => {
       baseSchemaId = baseSchema?.schema_id;
 
       if (baseSchema) {
-        // 基底スキーマと継承スキーマの間でuniqueの設定値が異なる場合、エラーを出す
+        // 自身が継承スキーマである場合、基底スキーマと自身の間のuniqueの設定が違う場合ログを残す(フロントにエラーは出さない)
         if (await hasInheritError(row.schema_id, baseSchema.schema_id)) {
           logging(
             LOGTYPE.ERROR,
             `継承スキーマ(id=${row.schema_id_string})、基底スキーマ(id=${baseSchema.schema_id_string})の間でunique設定が異なります`,
             'JsonToDatabase',
             'schemaListUpdate'
-          );
-          errorMessages.push(
-            `継承スキーマ(id=${row.schema_id_string})、基底スキーマ(id=${baseSchema.schema_id_string})の間でunique設定が異なります。`
           );
         }
       }
