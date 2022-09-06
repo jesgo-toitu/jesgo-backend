@@ -339,7 +339,7 @@ export const hasInheritError = async (
 ): Promise<boolean> => {
   logging(LOGTYPE.DEBUG, `呼び出し`, 'JsonToDatabase', 'hasInheritError');
   const results = (await dbAccess.query(
-    `SELECT uniqueness FROM jesgo_document_schema WHERE schema_id IN (${id1}, ${id2})`
+    `SELECT uniqueness FROM view_latest_schema WHERE schema_id IN (${id1}, ${id2})`
   )) as { uniqueness: boolean; schema_id_string: string }[];
   if (results[0].uniqueness === results[1].uniqueness) {
     // 継承先と基底の間でjesgo:uniqueの値が一緒であればエラー無しを返す
@@ -840,7 +840,7 @@ export const schemaListUpdate = async (errorMessages: string[]) => {
     document_schema->'jesgo:childschema' as child_s, 
     subschema_default as default_sub_s, 
     child_schema_default as default_child_s 
-    FROM jesgo_document_schema 
+    FROM view_latest_schema 
     WHERE schema_id <> 0`
   )) as dbRow[];
 
@@ -922,7 +922,7 @@ export const schemaListUpdate = async (errorMessages: string[]) => {
     if (row.schema_id_string !== null) {
       // 自身より下層のschema_id_stringを持つスキーマを継承スキーマに追加
       const inheritSchemaIds: schemaId[] = (await dbAccess.query(
-        `SELECT schema_id FROM jesgo_document_schema WHERE schema_id_string like '${row.schema_id_string}/%' AND schema_id <> 0`,
+        `SELECT schema_id FROM view_latest_schema WHERE schema_id_string like '${row.schema_id_string}/%' AND schema_id <> 0`,
         []
       )) as schemaId[];
       for (let m = 0; m < inheritSchemaIds.length; m++) {
@@ -939,16 +939,13 @@ export const schemaListUpdate = async (errorMessages: string[]) => {
       baseSchemaId = baseSchema?.schema_id;
 
       if (baseSchema) {
-        // 基底スキーマと継承スキーマの間でuniqueの設定値が異なる場合、エラーを出す
+        // 自身が継承スキーマである場合、基底スキーマと自身の間のuniqueの設定が違う場合ログを残す(フロントにエラーは出さない)
         if (await hasInheritError(row.schema_id, baseSchema.schema_id)) {
           logging(
             LOGTYPE.ERROR,
             `継承スキーマ(id=${row.schema_id_string})、基底スキーマ(id=${baseSchema.schema_id_string})の間でunique設定が異なります`,
             'JsonToDatabase',
             'schemaListUpdate'
-          );
-          errorMessages.push(
-            `継承スキーマ(id=${row.schema_id_string})、基底スキーマ(id=${baseSchema.schema_id_string})の間でunique設定が異なります。`
           );
         }
       }
@@ -986,21 +983,27 @@ export const schemaListUpdate = async (errorMessages: string[]) => {
   await updateRootSchemaList();
 };
 
-const updateRootSchemaList = async () =>{
-  const dbRows = await dbAccess.query(`SELECT ARRAY_AGG(DISTINCT(schema_id)) as root_ids FROM view_latest_schema WHERE document_schema->>'jesgo:parentschema' like '%"/"%';`) as {root_ids:number[]}[];
+const updateRootSchemaList = async () => {
+  const dbRows = (await dbAccess.query(
+    `SELECT ARRAY_AGG(DISTINCT(schema_id)) as root_ids FROM view_latest_schema WHERE document_schema->>'jesgo:parentschema' like '%"/"%';`
+  )) as { root_ids: number[] }[];
   const rootSchemaIdArray = dbRows[0].root_ids;
-  const oldDbRows = await dbAccess.query('SELECT subschema_default FROM jesgo_document_schema WHERE schema_id = 0') as {subschema_default:number[]}[];
+  const oldDbRows = (await dbAccess.query(
+    'SELECT subschema_default FROM jesgo_document_schema WHERE schema_id = 0'
+  )) as { subschema_default: number[] }[];
   const oldRootSchemaIdArray = oldDbRows[0].subschema_default;
 
   // 破壊的ソートを行う前にアップデート用の変数を用意しておく
   const newRootIds = numArrayCast2Pg(rootSchemaIdArray);
-  
+
   // 現在DBに保存されているルートスキーマのサブスキーマ初期設定が、最新の物と等しいかを確認する
-  if(!lodash.isEqual(rootSchemaIdArray.sort(), oldRootSchemaIdArray.sort())){
+  if (!lodash.isEqual(rootSchemaIdArray.sort(), oldRootSchemaIdArray.sort())) {
     // 等しくなければ情報を更新する
-    await dbAccess.query(`UPDATE jesgo_document_schema SET subschema = '{${newRootIds}}', subschema_default = '{${newRootIds}}' WHERE schema_id = 0`);
+    await dbAccess.query(
+      `UPDATE jesgo_document_schema SET subschema = '{${newRootIds}}', subschema_default = '{${newRootIds}}' WHERE schema_id = 0`
+    );
   }
-}
+};
 
 /** JSONSchema7のkeyと値を全て取得 */
 export const getItemsAndNames = (item: JSONSchema7) => {
