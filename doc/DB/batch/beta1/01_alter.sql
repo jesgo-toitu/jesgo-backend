@@ -1,4 +1,7 @@
-DROP VIEW view_latest_schema;
+ALTER TABLE jesgo_document_schema ADD COLUMN subschema_default integer[];
+ALTER TABLE jesgo_document_schema ADD COLUMN child_schema_default integer[];
+ALTER TABLE jesgo_document_schema ADD COLUMN inherit_schema_default integer[];
+
 CREATE TABLE IF NOT EXISTS jesgo_search_column
 (
 column_id integer,
@@ -7,6 +10,7 @@ column_name text,
 PRIMARY KEY ( column_id, column_type)
 );
 
+DROP VIEW view_latest_schema;
 CREATE VIEW view_latest_schema AS 
 SELECT s.* 
 FROM jesgo_document_schema s 
@@ -16,6 +20,3 @@ INNER JOIN
 ON s.schema_id = g.schema_id 
 WHERE s.schema_primary_id = g.newest_id;
 
-ALTER TABLE jesgo_document_schema ADD COLUMN subschema_default integer[];
-ALTER TABLE jesgo_document_schema ADD COLUMN child_schema_default integer[];
-ALTER TABLE jesgo_document_schema ADD COLUMN inherit_schema_default integer[];
