@@ -959,6 +959,7 @@ export const schemaListUpdate = async (errorMessages: string[]) => {
 
     let query = `UPDATE jesgo_document_schema SET 
       inherit_schema = '{${numArrayCast2Pg(inheritSchemaList)}}', 
+      inherit_schema_default = '{${numArrayCast2Pg(inheritSchemaList)}}', 
       base_schema = ${undefined2Null(baseSchemaId)}`;
 
     if (!lodash.isEqual(subSchemaList, row.default_sub_s)) {
