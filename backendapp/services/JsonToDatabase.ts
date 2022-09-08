@@ -1151,11 +1151,8 @@ export const jsonToSchema = async (): Promise<ApiReturnObject> => {
 };
 const streamPromise = async (stream: ParseStream) => {
   return new Promise((resolve, reject) => {
-    stream.on('end', () => {
-      resolve('end');
-    });
-    stream.on('finish', () => {
-      resolve('finish');
+    stream.on('close', () => {
+      resolve('close');
     });
     stream.on('error', (error) => {
       reject(error);
