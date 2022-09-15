@@ -55,6 +55,7 @@ graceful-fs
 has-unicode
 helmet
 http-errors
+iconv-lite
 inherits
 ipaddr.js
 is-fullwidth-code-point
