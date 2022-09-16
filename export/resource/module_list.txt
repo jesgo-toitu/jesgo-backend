@@ -137,3 +137,6 @@ which
 wide-align
 xtend
 yallist
+winser
+async
+stdio
