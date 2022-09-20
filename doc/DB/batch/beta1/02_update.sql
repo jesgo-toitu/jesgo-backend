@@ -1,4 +1,5 @@
 UPDATE jesgo_document_schema SET subschema_default = subschema, child_schema_default = child_schema, inherit_schema_default = inherit_schema;
+UPDATE jesgo_document_schema SET valid_from = 'epoch', valid_until = null;
 
 INSERT INTO jesgo_document_schema (schema_primary_id, schema_id, schema_id_string, title, subtitle, document_schema, 
 uniqueness, hidden, subschema, subschema_default, child_schema, child_schema_default, base_version_major, 

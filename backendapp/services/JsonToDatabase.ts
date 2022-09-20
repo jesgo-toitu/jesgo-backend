@@ -367,6 +367,12 @@ const getOldSchema = async (stringId: string): Promise<oldSchema> => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const ret: oldSchema[] = (await dbAccess.query(query)) as oldSchema[];
   if (ret.length > 0) {
+    // DB内の日付をGMT+0として認識しているので時差分の修正をする
+    ret[0].valid_from.setHours(ret[0].valid_from.getHours() + 9);
+    if(ret[0].valid_until){
+      ret[0].valid_until.setHours(ret[0].valid_until.getHours() + 9);  
+    }
+    
     // 既に存在するschema_string_id
     // eslint-disable-next-line @typescript-eslint/no-unsafe-argument,@typescript-eslint/no-unsafe-member-access
     return ret[0];
@@ -541,7 +547,7 @@ const makeInsertQuery = (
               'makeInsertQuery'
             );
             subQuery = [
-              formatDate(getPreviousDay(newValidFrom), '-'),
+              formatDate(getPreviousDay(new Date(newValidFrom)), '-'),
               schemaInfo.schema_primary_id.toString()
             ]
           }
@@ -555,11 +561,12 @@ const makeInsertQuery = (
   } else {
     // 開始日の指定なし
     // まずepoch date(0 - 1970-01-01)を開始日にする
-    const newValidFrom = new Date(0);
+    let newValidFrom = new Date(0);
 
     // 旧スキーマと有効期限開始日が同じか、古い場合は旧スキーマの翌日を開始日とする
     if (schemaInfo.valid_from >= newValidFrom) {
-      newValidFrom.setDate(schemaInfo.valid_from.getDate() + 1)
+      newValidFrom = new Date(schemaInfo.valid_from);
+      newValidFrom.setDate(newValidFrom.getDate() + 1)
     }
 
     logging(
@@ -584,7 +591,7 @@ const makeInsertQuery = (
           'makeInsertQuery'
         );
         subQuery = [
-          formatDate(getPreviousDay(newValidFrom), '-'),
+          formatDate(getPreviousDay(new Date(newValidFrom)), '-'),
           schemaInfo.schema_primary_id.toString()
         ]
 
