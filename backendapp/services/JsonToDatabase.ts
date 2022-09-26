@@ -48,7 +48,7 @@ export interface JSONSchema7Object {
 // Workaround for infinite type recursion
 // https://github.com/Microsoft/TypeScript/issues/3496#issuecomment-128553540
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
-export interface JSONSchema7Array extends Array<JSONSchema7Type> {}
+export interface JSONSchema7Array extends Array<JSONSchema7Type> { }
 
 /**
  * Meta schema
@@ -114,21 +114,21 @@ export interface JSONSchema7 {
   minProperties?: number | undefined;
   required?: string[] | undefined;
   properties?:
-    | {
-        [key: string]: JSONSchema7Definition;
-      }
-    | undefined;
+  | {
+    [key: string]: JSONSchema7Definition;
+  }
+  | undefined;
   patternProperties?:
-    | {
-        [key: string]: JSONSchema7Definition;
-      }
-    | undefined;
+  | {
+    [key: string]: JSONSchema7Definition;
+  }
+  | undefined;
   additionalProperties?: JSONSchema7Definition | undefined;
   dependencies?:
-    | {
-        [key: string]: JSONSchema7Definition | string[];
-      }
-    | undefined;
+  | {
+    [key: string]: JSONSchema7Definition | string[];
+  }
+  | undefined;
   propertyNames?: JSONSchema7Definition | undefined;
 
   /**
@@ -161,10 +161,10 @@ export interface JSONSchema7 {
    * @see https://tools.ietf.org/html/draft-handrews-json-schema-validation-01#section-9
    */
   definitions?:
-    | {
-        [key: string]: JSONSchema7Definition;
-      }
-    | undefined;
+  | {
+    [key: string]: JSONSchema7Definition;
+  }
+  | undefined;
 
   /**
    * @see https://tools.ietf.org/html/draft-handrews-json-schema-validation-01#section-10
@@ -180,10 +180,10 @@ export interface JSONSchema7 {
    * JSONSchema 未対応プロパティ
    */
   $defs?:
-    | {
-        [key: string]: JSONSchema7Definition;
-      }
-    | undefined;
+  | {
+    [key: string]: JSONSchema7Definition;
+  }
+  | undefined;
   units?: string | undefined;
 
   /**
@@ -367,6 +367,13 @@ const getOldSchema = async (stringId: string): Promise<oldSchema> => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const ret: oldSchema[] = (await dbAccess.query(query)) as oldSchema[];
   if (ret.length > 0) {
+    // DB内の日付をGMT+0として認識しているので時差分の修正をする
+    const offset = new Date().getTimezoneOffset() * 60 * 1000;
+    ret[0].valid_from = new Date(ret[0].valid_from.getTime() - offset);
+    if(ret[0].valid_until) {
+      ret[0].valid_until = new Date(ret[0].valid_until.getTime() - offset);
+    }
+    
     // 既に存在するschema_string_id
     // eslint-disable-next-line @typescript-eslint/no-unsafe-argument,@typescript-eslint/no-unsafe-member-access
     return ret[0];
@@ -446,12 +453,12 @@ const makeInsertQuery = (
   json: JSONSchema7,
   fileName: string,
   errorMessages: string[]
-): string[] => {
+): [string, string[], string[]] => {
   logging(LOGTYPE.DEBUG, `呼び出し`, 'JsonToDatabase', 'makeInsertQuery');
   let schemaIdString: string = json.$id ?? '';
   const title: string = json.title ?? '';
   let errorFlag = false;
-  let subQuery = '';
+  let subQuery = ['', ''];
   if (schemaIdString === '') {
     logging(
       LOGTYPE.ERROR,
@@ -489,18 +496,25 @@ const makeInsertQuery = (
   // INSERT
   let query =
     'INSERT INTO jesgo_document_schema (schema_id, schema_id_string, title, subtitle, document_schema';
-  let value = `${schemaInfo.schema_id}, '${schemaIdString}', '${
-    titles[0]
-  }', '${subtitle}', '${JSON.stringify(json)}'`;
+  let value = [
+    schemaInfo.schema_id.toString(),
+    schemaIdString,
+    titles[0],
+    subtitle,
+    JSON.stringify(json)
+  ];
+
   if (json['jesgo:unique'] != null) {
     query += ', uniqueness';
-    value += `, ${json['jesgo:unique'].toString()}`;
+    value.push(json['jesgo:unique'].toString());
   }
 
+  // スキーマ有効期限の処理
   if (json['jesgo:valid'] != null) {
     if (json['jesgo:valid'][0] != null) {
+      // 有効期限開始日の指定あり
       query += ', valid_from';
-      value += `, '${json['jesgo:valid'][0]}'`;
+      value.push(json['jesgo:valid'][0])
 
       const newValidFrom = new Date(json['jesgo:valid'][0]);
       // 旧スキーマと有効期限開始日が同じか、古い場合はエラー
@@ -533,73 +547,67 @@ const makeInsertQuery = (
               'JsonToDatabase',
               'makeInsertQuery'
             );
-            subQuery = `UPDATE jesgo_document_schema SET valid_until = '${formatDate(
-              getPreviousDay(newValidFrom),
-              '-'
-            )}' WHERE schema_primary_id = ${schemaInfo.schema_primary_id}`;
+            subQuery = [
+              formatDate(getPreviousDay(new Date(newValidFrom)), '-'),
+              schemaInfo.schema_primary_id.toString()
+            ]
           }
         }
       }
     }
     if (json['jesgo:valid'][1] != null) {
       query += ', valid_until';
-      value += `, '${json['jesgo:valid'][1]}'`;
+      value.push(json['jesgo:valid'][1]);
     }
   } else {
-    // 有効期限が設定されていないときは、登録日を有効期限にする
-    const dateObj = new Date();
-    const y = dateObj.getFullYear();
-    const m = `00${dateObj.getMonth() + 1}`.slice(-2);
-    const d = `00${dateObj.getDate()}`.slice(-2);
-    query += ', valid_from';
-    value += `, '${y}-${m}-${d}'`;
-    const newValidFrom = new Date(`${y}-${m}-${d}`);
+    // 開始日の指定なし
+    // まずepoch date(0 - 1970-01-01)を開始日にする
+    let newValidFrom = new Date(0);
 
-    // 旧スキーマと有効期限開始日が同じか、古い場合はエラー
+    // 旧スキーマと有効期限開始日が同じか、古い場合は旧スキーマの翌日を開始日とする
     if (schemaInfo.valid_from >= newValidFrom) {
-      logging(
-        LOGTYPE.ERROR,
-        `スキーマ(id=${schemaIdString})の有効期限開始日は登録済のものより新しくしてください。`,
-        'JsonToDatabase',
-        'makeInsertQuery'
-      );
-      errorMessages.push(
-        `[${cutTempPath(
-          dirPath,
-          fileName
-        )}]スキーマ(id=${schemaIdString})の有効期限開始日は登録済のものより新しくしてください。`
-      );
-      errorFlag = true;
-    } else {
-      // 旧スキーマに有効期限終了日が設定されていないか、新スキーマの有効期限開始日以降であれば
-      // 旧スキーマの有効期限終了日を新スキーマの有効期限開始日前日に設定する
-      if (
-        schemaInfo.valid_until === null ||
-        schemaInfo.valid_until >= newValidFrom
-      ) {
-        // schema_primary_idが-1であれば旧スキーマが存在しないので対応しない
-        if (schemaInfo.schema_primary_id !== -1) {
-          logging(
-            LOGTYPE.DEBUG,
-            `スキーマ(id=${schemaIdString}, Pid=${schemaInfo.schema_primary_id})の有効期限終了日を更新`,
-            'JsonToDatabase',
-            'makeInsertQuery'
-          );
-          subQuery = `UPDATE jesgo_document_schema SET valid_until = '${formatDate(
-            getPreviousDay(newValidFrom),
-            '-'
-          )}' WHERE schema_primary_id = ${schemaInfo.schema_primary_id}`;
-        }
+      newValidFrom = new Date(schemaInfo.valid_from);
+      newValidFrom.setDate(newValidFrom.getDate() + 1)
+    }
+
+    logging(
+      LOGTYPE.DEBUG,
+      `スキーマ(id=${schemaIdString})の有効期限開始日を ${formatDate(newValidFrom, '-')} に自動設定`,
+      'JsonToDatabase',
+      'makeInsertQuery'
+    );
+
+    // 旧スキーマに有効期限終了日が設定されていないか、新スキーマの有効期限開始日以降であれば
+    // 旧スキーマの有効期限終了日を新スキーマの有効期限開始日前日に設定する
+    if (
+      schemaInfo.valid_until === null ||
+      schemaInfo.valid_until >= newValidFrom
+    ) {
+      // schema_primary_idが-1であれば旧スキーマが存在しないので対応しない
+      if (schemaInfo.schema_primary_id !== -1) {
+        logging(
+          LOGTYPE.DEBUG,
+          `スキーマ(id=${schemaIdString}, Pid=${schemaInfo.schema_primary_id})の有効期限終了日を更新`,
+          'JsonToDatabase',
+          'makeInsertQuery'
+        );
+        subQuery = [
+          formatDate(getPreviousDay(new Date(newValidFrom)), '-'),
+          schemaInfo.schema_primary_id.toString()
+        ]
+
       }
     }
+    query += ', valid_from';
+    value.push(formatDate(newValidFrom, '-'));
   }
 
   // author はNOTNULL
   query += ', author';
   if (json['jesgo:author'] != null) {
-    value += `, ${json['jesgo:author']}`;
+    value.push(json['jesgo:author']);
   } else {
-    value += `, ''`;
+    value.push('');
   }
 
   // version
@@ -633,7 +641,7 @@ const makeInsertQuery = (
         errorFlag = true;
       }
 
-      value += `, ${majorVersion}, ${minorVersion}`;
+      value.push(majorVersion.toString(), minorVersion.toString());
     } catch {
       // バージョン形式が正しくない場合もエラーを返す
       logging(
@@ -668,15 +676,20 @@ const makeInsertQuery = (
   }
 
   query += ', plugin_id';
-  value += `, 0`;
+  value.push('0');
 
-  query += `) VALUES (${value})`;
+  // valueの項目数で代入項目を生成する
+  query += `) VALUES (${
+    value.map((s, i) => '$' + (i + 1).toString())
+    .join(', ')
+  })`;
 
-  // 一つでもエラーが出ていたらクエリは返さない
+  // 一つでもエラーが出ていたら有効なクエリは返さない
   if (errorFlag) {
-    return [];
+    return ['', [], []];
+  } else {
+    return [query, value, subQuery];
   }
-  return [query, subQuery];
 };
 
 const fileListInsert = async (
@@ -729,17 +742,23 @@ const fileListInsert = async (
     // Insert用IDを含む旧データの取得
     const oldJsonData = await getOldSchema(json.$id as string);
 
-    const queries = makeInsertQuery(
+    const [query, values, subqueryValues] = makeInsertQuery(
       oldJsonData,
       json,
       fileList[i],
       errorMessages
     );
-    if (queries.length > 0) {
-      await dbAccess.query(queries[0]);
-      if (queries[1] !== '') {
+    if (query !== '') {
+      await dbAccess.query(
+        query,
+        values
+      );
+      if (subqueryValues[0] !== '') {
         // 旧スキーマの有効期限更新がある場合そちらも行う
-        await dbAccess.query(queries[1]);
+        await dbAccess.query(
+          'UPDATE jesgo_document_schema SET valid_until = $1 WHERE schema_primary_id = $2',
+          subqueryValues
+        );
       }
       updateNum++;
     }
