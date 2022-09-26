@@ -368,10 +368,10 @@ const getOldSchema = async (stringId: string): Promise<oldSchema> => {
   const ret: oldSchema[] = (await dbAccess.query(query)) as oldSchema[];
   if (ret.length > 0) {
     // DB内の日付をGMT+0として認識しているので時差分の修正をする
-    const offset = new Date().getTimezoneOffset() / 60;
-    ret[0].valid_from.setHours(ret[0].valid_from.getHours() - offset);
-    if(ret[0].valid_until){
-      ret[0].valid_until.setHours(ret[0].valid_until.getHours() - offset);  
+    const offset = new Date().getTimezoneOffset() * 60 * 1000;
+    ret[0].valid_from = new Date(ret[0].valid_from.getTime() - offset);
+    if(ret[0].valid_until) {
+      ret[0].valid_until = new Date(ret[0].valid_until.getTime() - offset);
     }
     
     // 既に存在するschema_string_id
