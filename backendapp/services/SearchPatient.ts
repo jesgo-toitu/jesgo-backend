@@ -561,14 +561,30 @@ export const searchPatients = async (
     } else {
       // 3年予後
       if (!isAgoYearFromNow(new Date(userData.startDate), 3)) {
-        // 3年たっていなければ未指定とする(たっていればそのまま)
+        // 3年たっていなければ未指定とする
         userData.threeYearPrognosis = [];
+      } else {
+        // 3年たってれば「未」＞「済」の優先順で一番優先された物を価とする
+        const orderRule = ['not_completed', 'completed'];
+        userData.threeYearPrognosis = [
+          userData.threeYearPrognosis.sort(
+            (a, b) => orderRule.indexOf(a) - orderRule.indexOf(b)
+          )[0],
+        ];
       }
 
       // 5年予後
       if (!isAgoYearFromNow(new Date(userData.startDate), 5)) {
         // 5年たっていなければ未指定とする(たっていればそのまま)
         userData.fiveYearPrognosis = [];
+      } else {
+        // 5年たってれば「未」＞「済」の優先順で一番優先された物を価とする
+        const orderRule = ['not_completed', 'completed'];
+        userData.fiveYearPrognosis = [
+          userData.fiveYearPrognosis.sort(
+            (a, b) => orderRule.indexOf(a) - orderRule.indexOf(b)
+          )[0],
+        ];
       }
     }
   }
