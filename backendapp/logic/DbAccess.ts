@@ -59,10 +59,10 @@ export class DbAccess {
    * @returns {Promise}
    */
   public async end() {
-    try{
+    try {
       await this.client.end();
       this.connected = false;
-    }catch{
+    } catch {
       logging(LOGTYPE.ERROR, `既にDBがクローズされています`, 'DbAccess', 'end');
     }
   }

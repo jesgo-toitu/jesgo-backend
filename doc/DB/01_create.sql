@@ -60,7 +60,9 @@ document_schema JSON NOT NULL,
 uniqueness boolean DEFAULT FALSE,
 hidden boolean,
 subschema integer[],
+subschema_default integer[],
 child_schema integer[],
+child_schema_default integer[],
 base_version_major integer,
 valid_from date DEFAULT '1970-01-01',
 valid_until date,
@@ -69,6 +71,7 @@ version_major integer NOT NULL,
 version_minor integer NOT NULL,
 plugin_id integer,
 inherit_schema integer[],
+inherit_schema_default integer[],
 base_schema integer DEFAULT NULL
 -- TODO★設定テーブル未作成
 -- FOREIGN KEY(plugin_id) REFERENCES jesgo_setting(plugin_id)
@@ -118,3 +121,20 @@ CREATE TABLE IF NOT EXISTS jesgo_system_setting
 setting_id integer PRIMARY KEY,
 value JSONB NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS jesgo_search_column
+(
+column_id integer,
+column_type text,
+column_name text, 
+PRIMARY KEY ( column_id, column_type)
+);
+
+CREATE VIEW view_latest_schema AS 
+SELECT s.* 
+FROM jesgo_document_schema s 
+INNER JOIN 
+(SELECT schema_id, MAX(schema_primary_id) newest_id 
+ FROM jesgo_document_schema GROUP BY schema_id) g 
+ON s.schema_id = g.schema_id 
+WHERE s.schema_primary_id = g.newest_id;

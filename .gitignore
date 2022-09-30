@@ -117,3 +117,7 @@ uploads/*
 
 # ログファイル
 log/*
+backendapp/config/keys/*
+
+# output
+export/release/*

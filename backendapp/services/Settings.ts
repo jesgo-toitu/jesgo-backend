@@ -15,8 +15,7 @@ export type settings = {
 export const getSettings = async (): Promise<ApiReturnObject> => {
   logging(LOGTYPE.DEBUG, '呼び出し', 'Settings', 'getSettings');
   try {
-    const query = 
-    `SELECT 
+    const query = `SELECT 
     value->'setting'->'hisid'->>'alignment' as hisid_alignment, 
     value->'setting'->'hisid'->>'digit' as hisid_digit, 
     value->'setting'->'hisid'->>'hyphen_enable' as hisid_hyphen_enable, 
@@ -34,32 +33,40 @@ export const getSettings = async (): Promise<ApiReturnObject> => {
 
     return { statusNum: RESULT.NORMAL_TERMINATION, body: ret[0] };
   } catch (e) {
-    logging(LOGTYPE.ERROR, `エラー発生 ${(e as Error).message}`, 'Settings', 'getSettings');
+    logging(
+      LOGTYPE.ERROR,
+      `エラー発生 ${(e as Error).message}`,
+      'Settings',
+      'getSettings'
+    );
     return { statusNum: RESULT.ABNORMAL_TERMINATION, body: null };
   }
 };
 
-export const updateSettings = async (json:settings): Promise<ApiReturnObject> => {
+export const updateSettings = async (
+  json: settings
+): Promise<ApiReturnObject> => {
   logging(LOGTYPE.DEBUG, '呼び出し', 'Settings', 'updateSettings');
   try {
-
     const saveJson = {
-      setting:{
+      setting: {
         hisid: {
           alignment: json.hisid_alignment,
           digit: json.hisid_digit,
           hyphen_enable: json.hisid_hyphen_enable,
           alphabet_enable: json.hisid_alphabet_enable,
-        }, 
+        },
         facility_information: {
           name: json.facility_name,
           jsog_registration_number: json.jsog_registration_number,
           joed_registration_number: json.joed_registration_number,
         },
-      }
-    }
+      },
+    };
 
-    const query = `UPDATE jesgo_system_setting SET value = '${JSON.stringify(saveJson)}' WHERE setting_id = 1`;
+    const query = `UPDATE jesgo_system_setting SET value = '${JSON.stringify(
+      saveJson
+    )}' WHERE setting_id = 1`;
 
     const dbAccess = new DbAccess();
     await dbAccess.connectWithConf();
@@ -68,7 +75,12 @@ export const updateSettings = async (json:settings): Promise<ApiReturnObject> =>
 
     return { statusNum: RESULT.NORMAL_TERMINATION, body: null };
   } catch (e) {
-    logging(LOGTYPE.ERROR, `エラー発生 ${(e as Error).message}`, 'Settings', 'updateSettings');
+    logging(
+      LOGTYPE.ERROR,
+      `エラー発生 ${(e as Error).message}`,
+      'Settings',
+      'updateSettings'
+    );
     return { statusNum: RESULT.ABNORMAL_TERMINATION, body: null };
   }
 };

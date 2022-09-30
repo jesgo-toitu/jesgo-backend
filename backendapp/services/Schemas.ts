@@ -1,6 +1,7 @@
 import { logging, LOGTYPE } from '../logic/Logger';
 import { ApiReturnObject, RESULT } from '../logic/ApiCommon';
 import { DbAccess } from '../logic/DbAccess';
+import { JSONSchema7 } from './JsonToDatabase';
 
 export interface getJsonSchemaBody {
   ids: number[] | undefined;
@@ -8,6 +9,27 @@ export interface getJsonSchemaBody {
 
 export type records = {
   [key: string]: schemaRecord;
+};
+
+// 症例情報の定義
+// フロントのstore/schemaDataReducer.tsと同じものを使用するため
+// どちらかに更新が入ったらもう片方も更新すること
+export type JesgoDocumentSchema = {
+  schema_id: number;
+  schema_id_string: string;
+  title: string;
+  subtitle: string;
+  document_schema: JSONSchema7;
+  subschema: number[];
+  child_schema: number[];
+  inherit_schema: number[];
+  base_schema: number | null;
+  version_major: number;
+  version_minor: number;
+  schema_primary_id: number;
+  subschema_default: number[];
+  child_schema_default: number[];
+  inherit_schema_default: number[];
 };
 
 export type schemaRecord = {
@@ -20,8 +42,11 @@ export type schemaRecord = {
   hidden: boolean;
   subschema: number[];
   child_schema: number[];
+  subschema_default: number[];
+  child_schema_default: number[];
   inherit_schema: number[];
-  base_schema: number|null;
+  inherit_schema_default: number[];
+  base_schema: number | null;
   base_version_major: number;
   valid_from: Date;
   valid_until: Date;
@@ -31,10 +56,18 @@ export type schemaRecord = {
   plugin_id: number;
 };
 
+export type treeSchema = {
+  schema_id: number;
+  schema_title: string;
+  subschema: treeSchema[];
+  childschema: treeSchema[];
+  inheritschema: treeSchema[];
+};
+
 export const getJsonSchema = async (): Promise<ApiReturnObject> => {
   logging(LOGTYPE.DEBUG, `呼び出し`, 'Schemas', 'getJsonSchema');
   try {
-    const query = `SELECT * FROM jesgo_document_schema ORDER BY schema_primary_id DESC`;
+    const query = `SELECT * FROM view_latest_schema ORDER BY schema_primary_id DESC`;
 
     const dbAccess = new DbAccess();
     await dbAccess.connectWithConf();
@@ -43,7 +76,12 @@ export const getJsonSchema = async (): Promise<ApiReturnObject> => {
 
     return { statusNum: RESULT.NORMAL_TERMINATION, body: ret };
   } catch (e) {
-    logging(LOGTYPE.ERROR, `エラー発生 ${(e as Error).message}`, 'Schemas', 'getJsonSchema');
+    logging(
+      LOGTYPE.ERROR,
+      `エラー発生 ${(e as Error).message}`,
+      'Schemas',
+      'getJsonSchema'
+    );
     return { statusNum: RESULT.ABNORMAL_TERMINATION, body: null };
   }
 };
@@ -51,21 +89,211 @@ export const getJsonSchema = async (): Promise<ApiReturnObject> => {
 export const getRootSchemaIds = async (): Promise<ApiReturnObject> => {
   logging(LOGTYPE.DEBUG, `呼び出し`, 'Schemas', 'getRootSchemaIds');
   try {
-    const query = `select DISTINCT(schema_id) from jesgo_document_schema where document_schema->>'jesgo:parentschema' like '%"/"%';`;
+    const query = `SELECT subschema FROM view_latest_schema WHERE schema_id = 0`;
 
     const dbAccess = new DbAccess();
     await dbAccess.connectWithConf();
-    const ret = (await dbAccess.query(query)) as schemaRecord[];
+    const ret = (await dbAccess.query(query)) as { subschema: number[] }[];
     await dbAccess.end();
 
-    const ids: number[] = [];
-    for (let index = 0; index < ret.length; index++) {
-      const record = ret[index];
-      ids.push(record.schema_id);
-    }
+    const ids = ret[0].subschema;
     return { statusNum: RESULT.NORMAL_TERMINATION, body: ids };
   } catch (e) {
-    logging(LOGTYPE.ERROR, `エラー発生 ${(e as Error).message}`, 'Schemas', 'getRootSchemaIds');
+    logging(
+      LOGTYPE.ERROR,
+      `エラー発生 ${(e as Error).message}`,
+      'Schemas',
+      'getRootSchemaIds'
+    );
+    return { statusNum: RESULT.ABNORMAL_TERMINATION, body: [] };
+  }
+};
+
+export const getSchemaTree = async (): Promise<ApiReturnObject> => {
+  logging(LOGTYPE.DEBUG, `呼び出し`, 'Schemas', 'getScemaTree');
+  try {
+    // 最初にすべてのスキーマを取得
+    const allSchemaObject = await getJsonSchema();
+    const allSchemas = allSchemaObject.body as schemaRecord[];
+
+    // 続いてにルートスキーマのIDを取得
+    const rootIdObject = await getRootSchemaIds();
+    const rootIds = rootIdObject.body as number[];
+
+    // 保存用オブジェクト
+    const schemaTrees: treeSchema[] = [];
+
+    // ルートスキーマを順番にツリー用に処理する
+    for (let index = 0; index < rootIds.length; index++) {
+      const rootId = rootIds[index];
+
+      // 対象のルートスキーマIDに一致するスキーマレコードを取得
+      const rootSchema = allSchemas.find(
+        (schema) => schema.schema_id === rootId
+      );
+
+      if (rootSchema) {
+        // スキーマレコードが取得できた場合、ツリー用に処理する
+        const rootSchemaForTree = schemaRecord2SchemaTree(
+          rootSchema,
+          allSchemas
+        );
+        schemaTrees.push(rootSchemaForTree);
+      }
+    }
+    return { statusNum: RESULT.NORMAL_TERMINATION, body: schemaTrees };
+  } catch (e) {
+    logging(
+      LOGTYPE.ERROR,
+      `エラー発生 ${(e as Error).message}`,
+      'Schemas',
+      'getScemaTree'
+    );
+    return { statusNum: RESULT.ABNORMAL_TERMINATION, body: [] };
+  }
+};
+
+/**
+ * スキーマレコード1つと全スキーマを渡すとツリー形式で下位スキーマを取得した状態で返す
+ * @param schemarRecord 対象のスキーマレコード
+ * @param allSchemas 全スキーマのリスト
+ * @returns ツリー形式に変換された対象のスキーマレコード
+ */
+export const schemaRecord2SchemaTree = (
+  schemarRecord: schemaRecord,
+  allSchemas: schemaRecord[]
+): treeSchema => {
+  const subSchemaList = allSchemas.filter((schema) =>
+    schemarRecord.subschema.includes(schema.schema_id)
+  );
+  const childSchemaList = allSchemas.filter((schema) =>
+    schemarRecord.child_schema.includes(schema.schema_id)
+  );
+  const inheritSchemaList = allSchemas.filter((schema) =>
+    schemarRecord.inherit_schema.includes(schema.schema_id)
+  );
+
+  // サブスキーマ、子スキーマをDBに保存されている順番に並び替え
+  subSchemaList.sort(
+    (a, b) =>
+      schemarRecord.subschema.indexOf(a.schema_id) -
+      schemarRecord.subschema.indexOf(b.schema_id)
+  );
+  childSchemaList.sort(
+    (a, b) =>
+      schemarRecord.child_schema.indexOf(a.schema_id) -
+      schemarRecord.child_schema.indexOf(b.schema_id)
+  );
+  inheritSchemaList.sort(
+    (a, b) => 
+    schemarRecord.inherit_schema.indexOf(a.schema_id) - 
+    schemarRecord.inherit_schema.indexOf(b.schema_id)
+  );
+
+  const subSchemaListWithTree: treeSchema[] = [];
+  const childSchemaListWithTree: treeSchema[] = [];
+  const inheritSchemaListWithTree: treeSchema[] = [];
+
+  for (let index = 0; index < subSchemaList.length; index++) {
+    const schema = subSchemaList[index];
+    subSchemaListWithTree.push(schemaRecord2SchemaTree(schema, allSchemas));
+  }
+
+  for (let index = 0; index < childSchemaList.length; index++) {
+    const schema = childSchemaList[index];
+    childSchemaListWithTree.push(schemaRecord2SchemaTree(schema, allSchemas));
+  }
+
+  for (let index = 0; index < inheritSchemaList.length; index++) {
+    const schema = inheritSchemaList[index];
+    inheritSchemaListWithTree.push(schemaRecord2SchemaTree(schema, allSchemas));
+  }
+
+  return {
+    schema_id: schemarRecord.schema_id,
+    schema_title:
+      schemarRecord.title +
+      (schemarRecord.subtitle.length > 0 ? ' ' + schemarRecord.subtitle : ''),
+    subschema: subSchemaListWithTree,
+    childschema: childSchemaListWithTree,
+    inheritschema: inheritSchemaListWithTree,
+  };
+};
+
+export const updateSchemas = async (
+  schemas: JesgoDocumentSchema[]
+): Promise<ApiReturnObject> => {
+  logging(LOGTYPE.DEBUG, `呼び出し`, 'Schemas', 'updateChildSchemaga');
+  const dbAccess = new DbAccess();
+  try {
+    await dbAccess.connectWithConf();
+
+    for (const schema of schemas) {
+      // 現状はサブスキーマ、子スキーマのみ、継承スキーマのみ必要に応じて追加
+      await dbAccess.query(
+        'UPDATE jesgo_document_schema SET subschema = $1, child_schema = $2, inherit_schema = $3 WHERE schema_primary_id = $4',
+        [schema.subschema, schema.child_schema, schema.inherit_schema, schema.schema_primary_id]
+      );
+    }
+
+    return { statusNum: RESULT.NORMAL_TERMINATION, body: null };
+  } catch (e) {
+    logging(
+      LOGTYPE.ERROR,
+      `エラー発生 ${(e as Error).message}`,
+      'Schemas',
+      'getScemaTree'
+    );
+    return { statusNum: RESULT.ABNORMAL_TERMINATION, body: null };
+  } finally {
+    await dbAccess.end();
+  }
+};
+
+// 検索用セレクトボックス取得APIのbody 他検索が増えたらプロパティを増やす
+export type searchColumnsFromApi = {
+  cancerTypes: string[];
+};
+
+/**
+ * 検索用のセレクトボックスのデータを取得するAPI
+ * @returns がん種の文字列配列(表示順)を持つオブジェクト
+ */
+export const getSearchColumns = async (): Promise<ApiReturnObject> => {
+  logging(LOGTYPE.DEBUG, `呼び出し`, 'Schemas', 'getSearchColumns');
+
+  type dbRow = {
+    column_name: string;
+  };
+
+  try {
+    const dbAccess = new DbAccess();
+    await dbAccess.connectWithConf();
+
+    // 現状ではがん種のみ、必要なら処理を増やす
+    const cancerType: string[] = [];
+    const ret = (await dbAccess.query(
+      "SELECT column_name FROM jesgo_search_column WHERE column_type ='cancer_type' ORDER BY column_id"
+    )) as dbRow[];
+    for (let i = 0; i < ret.length; i++) {
+      cancerType.push(ret[i].column_name);
+    }
+    // ここまで
+
+    await dbAccess.end();
+
+    const searchColumns: searchColumnsFromApi = {
+      cancerTypes: cancerType,
+    };
+
+    return { statusNum: RESULT.NORMAL_TERMINATION, body: searchColumns };
+  } catch (e) {
+    logging(
+      LOGTYPE.ERROR,
+      `エラー発生 ${(e as Error).message}`,
+      'Schemas',
+      'getSearchColumns'
+    );
     return { statusNum: RESULT.ABNORMAL_TERMINATION, body: [] };
   }
 };
@@ -158,7 +386,6 @@ export const registrationCaseAndDocument = async (
 ): Promise<ApiReturnObject> => {
   logging(LOGTYPE.DEBUG, `呼び出し`, 'Schemas', 'registrationCaseAndDocument');
   // 戻り値 0:正常, -1:異常(不明), -2:ID被り
-  const ID_DUPLICATION = -2;
 
   const dbAccess = new DbAccess();
 
@@ -191,7 +418,7 @@ export const registrationCaseAndDocument = async (
         );
       } else {
         // - 新規作成で且つ被りIDが削除されていない場合は警告
-        return { statusNum: ID_DUPLICATION, body: null };
+        return { statusNum: RESULT.ID_DUPLICATION, body: null };
       }
     } else {
       // HIS_IDがなければcase_idを指定せずに症例情報を新規登録
@@ -359,7 +586,12 @@ export const registrationCaseAndDocument = async (
     await dbAccess.query('COMMIT');
     return { statusNum: RESULT.NORMAL_TERMINATION, body: caseId };
   } catch (e) {
-    logging(LOGTYPE.ERROR, `エラー発生 ${(e as Error).message}`, 'Schemas', 'registrationCaseAndDocument');
+    logging(
+      LOGTYPE.ERROR,
+      `エラー発生 ${(e as Error).message}`,
+      'Schemas',
+      'registrationCaseAndDocument'
+    );
     await dbAccess.query('ROLLBACK');
   } finally {
     await dbAccess.end();
@@ -379,13 +611,24 @@ export const getCaseAndDocument = async (
     await dbAccess.connectWithConf();
     // 症例データを取得して格納
     const retCase = (await dbAccess.query(
-      'SELECT * FROM jesgo_case WHERE case_id = $1',
+      'SELECT * FROM jesgo_case WHERE case_id = $1 and deleted = false',
       [caseId]
     )) as jesgoCaseDefine[];
     const returnObj: SaveDataObjDefine = {
       jesgo_case: retCase[0],
       jesgo_document: [],
     };
+
+    // 症例データが取得できなかった場合はエラーを返して終了
+    if (!returnObj.jesgo_case) {
+      logging(
+        LOGTYPE.ERROR,
+        `存在しないcase_idの読込(case_id=${caseId})`,
+        'Schemas',
+        'getCaseAndDocument'
+      );
+      return { statusNum: RESULT.NOT_FOUND_CASE, body: null };
+    }
 
     // 削除されていない関連づくドキュメントデータを取得
     const retDocs = (await dbAccess.query(
@@ -404,7 +647,7 @@ export const getCaseAndDocument = async (
           child_documents: doc.child_documents,
           schema_id: doc.schema_id,
           schema_primary_id: doc.schema_primary_id,
-          inherit_schema: doc.inherit_schema, 
+          inherit_schema: doc.inherit_schema,
           schema_major_version: doc.schema_major_version,
           registrant: doc.registrant,
           last_updated: doc.last_updated,
@@ -422,7 +665,12 @@ export const getCaseAndDocument = async (
     await dbAccess.end();
     return { statusNum: RESULT.NORMAL_TERMINATION, body: returnObj };
   } catch (e) {
-    logging(LOGTYPE.ERROR, `エラー発生 ${(e as Error).message}`, 'Schemas', 'getCaseAndDocument');
+    logging(
+      LOGTYPE.ERROR,
+      `エラー発生 ${(e as Error).message}`,
+      'Schemas',
+      'getCaseAndDocument'
+    );
     return { statusNum: RESULT.ABNORMAL_TERMINATION, body: null };
   }
 };
