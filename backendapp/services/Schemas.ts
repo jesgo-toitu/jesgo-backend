@@ -1,3 +1,4 @@
+import lodash from 'lodash';
 import { logging, LOGTYPE } from '../logic/Logger';
 import { ApiReturnObject, RESULT } from '../logic/ApiCommon';
 import { DbAccess } from '../logic/DbAccess';
@@ -123,25 +124,49 @@ export const getSchemaTree = async (): Promise<ApiReturnObject> => {
     // 保存用オブジェクト
     const schemaTrees: treeSchema[] = [];
 
+    // 無限ループ防止用ブラックリスト
+    const blackList: number[] = [];
+
     // ルートスキーマを順番にツリー用に処理する
     for (let index = 0; index < rootIds.length; index++) {
       const rootId = rootIds[index];
-
-      // 対象のルートスキーマIDに一致するスキーマレコードを取得
-      const rootSchema = allSchemas.find(
-        (schema) => schema.schema_id === rootId
-      );
-
-      if (rootSchema) {
-        // スキーマレコードが取得できた場合、ツリー用に処理する
-        const rootSchemaForTree = schemaRecord2SchemaTree(
-          rootSchema,
-          allSchemas
+      if (!blackList.includes(rootId)) {
+        // 対象のルートスキーマIDに一致するスキーマレコードを取得
+        const rootSchema = allSchemas.find(
+          (schema) => schema.schema_id === rootId
         );
-        schemaTrees.push(rootSchemaForTree);
+
+        if (rootSchema) {
+          // スキーマレコードが取得できた場合、ツリー用に処理する
+          const rootSchemaForTree = schemaRecord2SchemaTree(
+            rootSchema,
+            allSchemas,
+            [0],
+            blackList
+          );
+          if (rootSchemaForTree) {
+            schemaTrees.push(rootSchemaForTree);
+          }
+        }
       }
     }
-    return { statusNum: RESULT.NORMAL_TERMINATION, body: schemaTrees };
+    const errorMessages = [];
+    for (let i = 0; i < blackList.length; i++) {
+      const blackListedSchema = allSchemas.find(
+        (schema) => schema.schema_id === blackList[i]
+      );
+      if (blackListedSchema) {
+        const schemaName = blackListedSchema.subtitle
+          ? `${blackListedSchema.title} ${blackListedSchema.subtitle}`
+          : blackListedSchema.title;
+        const msg = `${schemaName}($id=${blackListedSchema.schema_id_string})について呼び出しがループしています。上位スキーマ、下位スキーマを見直してください。`;
+        errorMessages.push(msg);
+      }
+    }
+    return {
+      statusNum: RESULT.NORMAL_TERMINATION,
+      body: { treeSchema: schemaTrees, errorMessages: errorMessages },
+    };
   } catch (e) {
     logging(
       LOGTYPE.ERROR,
@@ -149,45 +174,63 @@ export const getSchemaTree = async (): Promise<ApiReturnObject> => {
       'Schemas',
       'getScemaTree'
     );
-    return { statusNum: RESULT.ABNORMAL_TERMINATION, body: [] };
+    return {
+      statusNum: RESULT.ABNORMAL_TERMINATION,
+      body: {
+        treeSchema: [],
+        errorMessages: ['スキーマツリーの取得に失敗しました。'],
+      },
+    };
   }
 };
 
 /**
  * スキーマレコード1つと全スキーマを渡すとツリー形式で下位スキーマを取得した状態で返す
- * @param schemarRecord 対象のスキーマレコード
+ * @param schemaRecord 対象のスキーマレコード
  * @param allSchemas 全スキーマのリスト
  * @returns ツリー形式に変換された対象のスキーマレコード
  */
 export const schemaRecord2SchemaTree = (
-  schemarRecord: schemaRecord,
-  allSchemas: schemaRecord[]
-): treeSchema => {
+  schemaRecord: schemaRecord,
+  allSchemas: schemaRecord[],
+  loadedTree: number[],
+  blackList: number[]
+): treeSchema | null => {
+  const tempLoadedTree = lodash.cloneDeep(loadedTree);
+  if (blackList.includes(schemaRecord.schema_id)) {
+    return null;
+  }
+  if (tempLoadedTree.includes(schemaRecord.schema_id)) {
+    blackList.push(schemaRecord.schema_id);
+    return null;
+  } else {
+    tempLoadedTree.push(schemaRecord.schema_id);
+  }
   const subSchemaList = allSchemas.filter((schema) =>
-    schemarRecord.subschema.includes(schema.schema_id)
+    schemaRecord.subschema.includes(schema.schema_id)
   );
   const childSchemaList = allSchemas.filter((schema) =>
-    schemarRecord.child_schema.includes(schema.schema_id)
+    schemaRecord.child_schema.includes(schema.schema_id)
   );
   const inheritSchemaList = allSchemas.filter((schema) =>
-    schemarRecord.inherit_schema.includes(schema.schema_id)
+    schemaRecord.inherit_schema.includes(schema.schema_id)
   );
 
   // サブスキーマ、子スキーマをDBに保存されている順番に並び替え
   subSchemaList.sort(
     (a, b) =>
-      schemarRecord.subschema.indexOf(a.schema_id) -
-      schemarRecord.subschema.indexOf(b.schema_id)
+      schemaRecord.subschema.indexOf(a.schema_id) -
+      schemaRecord.subschema.indexOf(b.schema_id)
   );
   childSchemaList.sort(
     (a, b) =>
-      schemarRecord.child_schema.indexOf(a.schema_id) -
-      schemarRecord.child_schema.indexOf(b.schema_id)
+      schemaRecord.child_schema.indexOf(a.schema_id) -
+      schemaRecord.child_schema.indexOf(b.schema_id)
   );
   inheritSchemaList.sort(
-    (a, b) => 
-    schemarRecord.inherit_schema.indexOf(a.schema_id) - 
-    schemarRecord.inherit_schema.indexOf(b.schema_id)
+    (a, b) =>
+      schemaRecord.inherit_schema.indexOf(a.schema_id) -
+      schemaRecord.inherit_schema.indexOf(b.schema_id)
   );
 
   const subSchemaListWithTree: treeSchema[] = [];
@@ -195,25 +238,46 @@ export const schemaRecord2SchemaTree = (
   const inheritSchemaListWithTree: treeSchema[] = [];
 
   for (let index = 0; index < subSchemaList.length; index++) {
-    const schema = subSchemaList[index];
-    subSchemaListWithTree.push(schemaRecord2SchemaTree(schema, allSchemas));
+    const underTree = schemaRecord2SchemaTree(
+      subSchemaList[index],
+      allSchemas,
+      tempLoadedTree,
+      blackList
+    );
+    if (underTree) {
+      subSchemaListWithTree.push(underTree);
+    }
   }
 
   for (let index = 0; index < childSchemaList.length; index++) {
-    const schema = childSchemaList[index];
-    childSchemaListWithTree.push(schemaRecord2SchemaTree(schema, allSchemas));
+    const underTree = schemaRecord2SchemaTree(
+      childSchemaList[index],
+      allSchemas,
+      tempLoadedTree,
+      blackList
+    );
+    if (underTree) {
+      childSchemaListWithTree.push(underTree);
+    }
   }
 
   for (let index = 0; index < inheritSchemaList.length; index++) {
-    const schema = inheritSchemaList[index];
-    inheritSchemaListWithTree.push(schemaRecord2SchemaTree(schema, allSchemas));
+    const underTree = schemaRecord2SchemaTree(
+      inheritSchemaList[index],
+      allSchemas,
+      tempLoadedTree,
+      blackList
+    );
+    if (underTree) {
+      inheritSchemaListWithTree.push(underTree);
+    }
   }
 
   return {
-    schema_id: schemarRecord.schema_id,
+    schema_id: schemaRecord.schema_id,
     schema_title:
-      schemarRecord.title +
-      (schemarRecord.subtitle.length > 0 ? ' ' + schemarRecord.subtitle : ''),
+      schemaRecord.title +
+      (schemaRecord.subtitle.length > 0 ? ' ' + schemaRecord.subtitle : ''),
     subschema: subSchemaListWithTree,
     childschema: childSchemaListWithTree,
     inheritschema: inheritSchemaListWithTree,
@@ -232,7 +296,12 @@ export const updateSchemas = async (
       // 現状はサブスキーマ、子スキーマのみ、継承スキーマのみ必要に応じて追加
       await dbAccess.query(
         'UPDATE jesgo_document_schema SET subschema = $1, child_schema = $2, inherit_schema = $3 WHERE schema_primary_id = $4',
-        [schema.subschema, schema.child_schema, schema.inherit_schema, schema.schema_primary_id]
+        [
+          schema.subschema,
+          schema.child_schema,
+          schema.inherit_schema,
+          schema.schema_primary_id,
+        ]
       );
     }
 
