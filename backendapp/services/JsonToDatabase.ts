@@ -48,7 +48,7 @@ export interface JSONSchema7Object {
 // Workaround for infinite type recursion
 // https://github.com/Microsoft/TypeScript/issues/3496#issuecomment-128553540
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
-export interface JSONSchema7Array extends Array<JSONSchema7Type> {}
+export interface JSONSchema7Array extends Array<JSONSchema7Type> { }
 
 /**
  * Meta schema
@@ -114,21 +114,21 @@ export interface JSONSchema7 {
   minProperties?: number | undefined;
   required?: string[] | undefined;
   properties?:
-    | {
-        [key: string]: JSONSchema7Definition;
-      }
-    | undefined;
+  | {
+    [key: string]: JSONSchema7Definition;
+  }
+  | undefined;
   patternProperties?:
-    | {
-        [key: string]: JSONSchema7Definition;
-      }
-    | undefined;
+  | {
+    [key: string]: JSONSchema7Definition;
+  }
+  | undefined;
   additionalProperties?: JSONSchema7Definition | undefined;
   dependencies?:
-    | {
-        [key: string]: JSONSchema7Definition | string[];
-      }
-    | undefined;
+  | {
+    [key: string]: JSONSchema7Definition | string[];
+  }
+  | undefined;
   propertyNames?: JSONSchema7Definition | undefined;
 
   /**
@@ -161,10 +161,10 @@ export interface JSONSchema7 {
    * @see https://tools.ietf.org/html/draft-handrews-json-schema-validation-01#section-9
    */
   definitions?:
-    | {
-        [key: string]: JSONSchema7Definition;
-      }
-    | undefined;
+  | {
+    [key: string]: JSONSchema7Definition;
+  }
+  | undefined;
 
   /**
    * @see https://tools.ietf.org/html/draft-handrews-json-schema-validation-01#section-10
@@ -180,10 +180,10 @@ export interface JSONSchema7 {
    * JSONSchema 未対応プロパティ
    */
   $defs?:
-    | {
-        [key: string]: JSONSchema7Definition;
-      }
-    | undefined;
+  | {
+    [key: string]: JSONSchema7Definition;
+  }
+  | undefined;
   units?: string | undefined;
 
   /**
@@ -370,10 +370,10 @@ const getOldSchema = async (stringId: string): Promise<oldSchema> => {
     // DB内の日付をGMT+0として認識しているので時差分の修正をする
     const offset = new Date().getTimezoneOffset() * 60 * 1000;
     ret[0].valid_from = new Date(ret[0].valid_from.getTime() - offset);
-    if (ret[0].valid_until) {
+    if(ret[0].valid_until) {
       ret[0].valid_until = new Date(ret[0].valid_until.getTime() - offset);
     }
-
+    
     // 既に存在するschema_string_id
     // eslint-disable-next-line @typescript-eslint/no-unsafe-argument,@typescript-eslint/no-unsafe-member-access
     return ret[0];
@@ -496,12 +496,12 @@ const makeInsertQuery = (
   // INSERT
   let query =
     'INSERT INTO jesgo_document_schema (schema_id, schema_id_string, title, subtitle, document_schema';
-  const value = [
+  let value = [
     schemaInfo.schema_id.toString(),
     schemaIdString,
     titles[0],
     subtitle,
-    JSON.stringify(json),
+    JSON.stringify(json)
   ];
 
   if (json['jesgo:unique'] != null) {
@@ -514,7 +514,7 @@ const makeInsertQuery = (
     if (json['jesgo:valid'][0] != null) {
       // 有効期限開始日の指定あり
       query += ', valid_from';
-      value.push(json['jesgo:valid'][0]);
+      value.push(json['jesgo:valid'][0])
 
       const newValidFrom = new Date(json['jesgo:valid'][0]);
       // 旧スキーマと有効期限開始日が同じか、古い場合はエラー
@@ -549,8 +549,8 @@ const makeInsertQuery = (
             );
             subQuery = [
               formatDate(getPreviousDay(new Date(newValidFrom)), '-'),
-              schemaInfo.schema_primary_id.toString(),
-            ];
+              schemaInfo.schema_primary_id.toString()
+            ]
           }
         }
       }
@@ -567,15 +567,12 @@ const makeInsertQuery = (
     // 旧スキーマと有効期限開始日が同じか、古い場合は旧スキーマの翌日を開始日とする
     if (schemaInfo.valid_from >= newValidFrom) {
       newValidFrom = new Date(schemaInfo.valid_from);
-      newValidFrom.setDate(newValidFrom.getDate() + 1);
+      newValidFrom.setDate(newValidFrom.getDate() + 1)
     }
 
     logging(
       LOGTYPE.DEBUG,
-      `スキーマ(id=${schemaIdString})の有効期限開始日を ${formatDate(
-        newValidFrom,
-        '-'
-      )} に自動設定`,
+      `スキーマ(id=${schemaIdString})の有効期限開始日を ${formatDate(newValidFrom, '-')} に自動設定`,
       'JsonToDatabase',
       'makeInsertQuery'
     );
@@ -596,8 +593,9 @@ const makeInsertQuery = (
         );
         subQuery = [
           formatDate(getPreviousDay(new Date(newValidFrom)), '-'),
-          schemaInfo.schema_primary_id.toString(),
-        ];
+          schemaInfo.schema_primary_id.toString()
+        ]
+
       }
     }
     query += ', valid_from';
@@ -681,9 +679,10 @@ const makeInsertQuery = (
   value.push('0');
 
   // valueの項目数で代入項目を生成する
-  query += `) VALUES (${value
-    .map((s, i) => '$' + (i + 1).toString())
-    .join(', ')})`;
+  query += `) VALUES (${
+    value.map((s, i) => '$' + (i + 1).toString())
+    .join(', ')
+  })`;
 
   // 一つでもエラーが出ていたら有効なクエリは返さない
   if (errorFlag) {
@@ -699,7 +698,6 @@ const fileListInsert = async (
 ): Promise<number> => {
   logging(LOGTYPE.DEBUG, `呼び出し`, 'JsonToDatabase', 'fileListInsert');
   let updateNum = 0;
-  const jsons: JSONSchema7[] = [];
   for (let i = 0; i < fileList.length; i++) {
     if (!fileList[i].endsWith('.json')) {
       logging(
@@ -722,7 +720,6 @@ const fileListInsert = async (
     let json: JSONSchema7 = {};
     try {
       json = JSON.parse(readFileSync(fileList[i], 'utf8')) as JSONSchema7;
-      jsons.push(json);
     } catch {
       logging(
         LOGTYPE.ERROR,
@@ -741,57 +738,21 @@ const fileListInsert = async (
       );
       continue;
     }
-  }
 
-  // jsonファイルを並び替える
-  jsons
-    // 文字列の短い順(よりパスの短い順)に整列
-    .sort(function (a, b) {
-      // $ID順で並び替え
-      if (a.$id && b.$id) {
-        if (a.$id !== b.$id) {
-          if (a.$id > b.$id) return 1;
-          if (a.$id < b.$id) return -1;
-        }
-      }
-
-      // バージョンの比較
-      const versionOfA = a['jesgo:version'];
-      const versionOfB = b['jesgo:version'];
-      if (versionOfA && versionOfB) {
-        // メジャーバージョン順で並び替え
-        if (
-          Number(versionOfA.split('.')[0]) !== Number(versionOfB.split('.')[0])
-        ) {
-          return (
-            Number(versionOfA.split('.')[0]) - Number(versionOfB.split('.')[0])
-          );
-        }
-        // マイナーーバージョン順で並び替え
-        if (
-          Number(versionOfA.split('.')[1]) !== Number(versionOfB.split('.')[1])
-        ) {
-          return (
-            Number(versionOfA.split('.')[1]) - Number(versionOfB.split('.')[1])
-          );
-        }
-      }
-
-      return 0;
-    });
-
-  for (let i = 0; i < jsons.length; i++) {
     // Insert用IDを含む旧データの取得
-    const oldJsonData = await getOldSchema(jsons[i].$id as string);
+    const oldJsonData = await getOldSchema(json.$id as string);
 
     const [query, values, subqueryValues] = makeInsertQuery(
       oldJsonData,
-      jsons[i],
+      json,
       fileList[i],
       errorMessages
     );
     if (query !== '') {
-      await dbAccess.query(query, values);
+      await dbAccess.query(
+        query,
+        values
+      );
       if (subqueryValues[0] !== '') {
         // 旧スキーマの有効期限更新がある場合そちらも行う
         await dbAccess.query(
@@ -808,7 +769,7 @@ const fileListInsert = async (
 /**
  * DBに登録されているスキーマのsubschema, childschema情報をアップデートする
  */
-export const schemaListUpdate = async () => {
+export const schemaListUpdate = async (errorMessages: string[]) => {
   logging(LOGTYPE.DEBUG, `呼び出し`, 'JsonToDatabase', 'schemaListUpdate');
 
   // 先に「子スキーマから指定した親スキーマの関係リスト」を逆にしたものを作成しておく
@@ -1190,7 +1151,7 @@ export const jsonToSchema = async (): Promise<ApiReturnObject> => {
 
     await fileListInsert(fileList, []);
 
-    await schemaListUpdate();
+    await schemaListUpdate([]);
 
     await dbAccess.query('COMMIT');
     return { statusNum: RESULT.NORMAL_TERMINATION, body: null };
@@ -1276,7 +1237,7 @@ export const uploadZipFile = async (data: any): Promise<ApiReturnObject> => {
 
     // スキーマが1件以上新規登録、更新された場合のみ関係性のアップデートを行う
     if (updateNum > 0) {
-      await schemaListUpdate();
+      await schemaListUpdate(errorMessages);
     }
 
     return {
