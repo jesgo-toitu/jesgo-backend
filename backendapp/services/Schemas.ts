@@ -130,6 +130,7 @@ export const getSchemaTree = async (): Promise<ApiReturnObject> => {
     // ルートスキーマを順番にツリー用に処理する
     for (let index = 0; index < rootIds.length; index++) {
       const rootId = rootIds[index];
+      // ブラックリスト以外のもののみ処理する
       if (!blackList.includes(rootId)) {
         // 対象のルートスキーマIDに一致するスキーマレコードを取得
         const rootSchema = allSchemas.find(
