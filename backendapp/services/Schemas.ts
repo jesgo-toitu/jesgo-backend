@@ -110,8 +110,8 @@ export const getRootSchemaIds = async (): Promise<ApiReturnObject> => {
   }
 };
 
-export const getSchemaTree = async (): Promise<ApiReturnObject> => {
-  logging(LOGTYPE.DEBUG, `呼び出し`, 'Schemas', 'getScemaTree');
+export const analyseSchemaTree = async (): Promise<ApiReturnObject> => {
+  logging(LOGTYPE.DEBUG, `呼び出し`, 'Schemas', 'analyseSchemaTree');
   try {
     // 最初にすべてのスキーマを取得
     const allSchemaObject = await getJsonSchema();
@@ -165,7 +165,7 @@ export const getSchemaTree = async (): Promise<ApiReturnObject> => {
     }
     return {
       statusNum: RESULT.NORMAL_TERMINATION,
-      body: { treeSchema: schemaTrees, errorMessages: errorMessages },
+      body: { treeSchema: schemaTrees, errorMessages: errorMessages, blackList },
     };
   } catch (e) {
     logging(
@@ -179,9 +179,44 @@ export const getSchemaTree = async (): Promise<ApiReturnObject> => {
       body: {
         treeSchema: [],
         errorMessages: ['スキーマツリーの取得に失敗しました。'],
+        blackList: [], 
       },
     };
   }
+};
+
+export const getInfiniteLoopBlackList = async  (): Promise<ApiReturnObject> => {
+  logging(LOGTYPE.DEBUG, `呼び出し`, 'Schemas', 'getInfiniteLoopBlackList');
+  const returned:ApiReturnObject = await analyseSchemaTree();
+  if(returned.statusNum === RESULT.NORMAL_TERMINATION){
+    const apiBody = returned.body as {blackList:number[]};
+    return {
+      statusNum: returned.statusNum,
+      body: { 
+        blackList: apiBody.blackList,
+      }
+    };
+  }
+  logging(LOGTYPE.ERROR, `無限ループブラックリストが正常に取得できませんでした。`, 'Schemas', 'getInfiniteLoopBlackList');
+  return {
+    statusNum: returned.statusNum,
+    body: { 
+      blackList: [] as number[],
+    }
+  };
+};
+
+export const getSchemaTree = async (): Promise<ApiReturnObject> => {
+  logging(LOGTYPE.DEBUG, `呼び出し`, 'Schemas', 'getScemaTree');
+  const returned:ApiReturnObject = await analyseSchemaTree();
+  const apiBody = returned.body as {treeSchema:treeSchema[], errorMessages:string[]};
+  return {
+    statusNum: returned.statusNum,
+    body: { 
+      treeSchema: apiBody.treeSchema, 
+      errorMessages: apiBody.errorMessages,
+    }
+  };
 };
 
 /**
