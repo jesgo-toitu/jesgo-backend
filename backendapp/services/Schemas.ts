@@ -30,6 +30,9 @@ export type JesgoDocumentSchema = {
   subschema_default: number[];
   child_schema_default: number[];
   inherit_schema_default: number[];
+  valid_from: string;
+  valid_until: string | null;
+  hidden: boolean;
 };
 
 export type schemaRecord = {
@@ -49,7 +52,7 @@ export type schemaRecord = {
   base_schema: number | null;
   base_version_major: number;
   valid_from: Date;
-  valid_until: Date;
+  valid_until: Date | null;
   author: string;
   version_major: number;
   version_minor: number;
@@ -64,10 +67,14 @@ export type treeSchema = {
   inheritschema: treeSchema[];
 };
 
-export const getJsonSchema = async (): Promise<ApiReturnObject> => {
+export const getJsonSchema = async (
+  forRelation = false
+): Promise<ApiReturnObject> => {
   logging(LOGTYPE.DEBUG, `呼び出し`, 'Schemas', 'getJsonSchema');
   try {
-    const query = `SELECT * FROM view_latest_schema ORDER BY schema_primary_id DESC`;
+    const query = forRelation
+      ? `SELECT * FROM view_latest_schema ORDER BY schema_primary_id DESC`
+      : `SELECT * FROM jesgo_document_schema ORDER BY schema_primary_id DESC`;
 
     const dbAccess = new DbAccess();
     await dbAccess.connectWithConf();
@@ -112,8 +119,8 @@ export const getRootSchemaIds = async (): Promise<ApiReturnObject> => {
 export const getSchemaTree = async (): Promise<ApiReturnObject> => {
   logging(LOGTYPE.DEBUG, `呼び出し`, 'Schemas', 'getScemaTree');
   try {
-    // 最初にすべてのスキーマを取得
-    const allSchemaObject = await getJsonSchema();
+    // 最初にすべてのスキーマの最新を取得(バージョンは必要ない)
+    const allSchemaObject = await getJsonSchema(true);
     const allSchemas = allSchemaObject.body as schemaRecord[];
 
     // 続いてにルートスキーマのIDを取得
@@ -185,9 +192,9 @@ export const schemaRecord2SchemaTree = (
       schemarRecord.child_schema.indexOf(b.schema_id)
   );
   inheritSchemaList.sort(
-    (a, b) => 
-    schemarRecord.inherit_schema.indexOf(a.schema_id) - 
-    schemarRecord.inherit_schema.indexOf(b.schema_id)
+    (a, b) =>
+      schemarRecord.inherit_schema.indexOf(a.schema_id) -
+      schemarRecord.inherit_schema.indexOf(b.schema_id)
   );
 
   const subSchemaListWithTree: treeSchema[] = [];
@@ -231,8 +238,16 @@ export const updateSchemas = async (
     for (const schema of schemas) {
       // 現状はサブスキーマ、子スキーマのみ、継承スキーマのみ必要に応じて追加
       await dbAccess.query(
-        'UPDATE jesgo_document_schema SET subschema = $1, child_schema = $2, inherit_schema = $3 WHERE schema_primary_id = $4',
-        [schema.subschema, schema.child_schema, schema.inherit_schema, schema.schema_primary_id]
+        'UPDATE jesgo_document_schema SET subschema = $1, child_schema = $2, inherit_schema = $3, valid_from = $4, valid_until = $5, hidden = $6 WHERE schema_primary_id = $7',
+        [
+          schema.subschema,
+          schema.child_schema,
+          schema.inherit_schema,
+          str2Date(schema.valid_from),
+          str2Date(schema.valid_until),
+          schema.hidden,
+          schema.schema_primary_id,
+        ]
       );
     }
 
@@ -364,11 +379,20 @@ export interface SaveDataObjDefine {
   jesgo_document: jesgoDocumentObjDefine[];
 }
 
-const str2Date = (dateStr: string): string | null => {
-  if (dateStr === '') {
+/**
+ * 入ってきた文字列をDate形式にして返す、変換不可能な文字列や空文字、nullはnullで返す
+ * @param str 日付文字列(空文字もあり)かnull
+ * @returns Date形式かnull
+ */
+const str2Date = (str: string | null): Date | null => {
+  if (str === null || str === '') {
     return null;
   }
-  return dateStr;
+  const date = new Date(str);
+  if (date.getTime()) {
+    return date;
+  }
+  return null;
 };
 
 const str2Num = (numStr: string): number => {
