@@ -46,15 +46,15 @@ export const isAgoYearFromNow = (date: Date, year: number): boolean => {
 };
 
 // 患者特定ハッシュ値生成
-export const GetPatientHash = (birthday: Date | string, his_id: string, name: string) => {
+export const GetPatientHash = (birthday: Date | string, his_id: string) => {
   let birthdayStr = '';
   if (birthday) {
     birthdayStr = formatDateStr(birthday.toString(), '');
   }
 
-  // his_id + 生年月日(yyyyMMdd) + 氏名でハッシュ生成
+  // his_id + 生年月日(yyyyMMdd)で生成
   return crypto
     .createHash('sha256')
-    .update(`${his_id}${birthdayStr}${name}`.replace(/\s+/g, ""), 'utf8')
+    .update(`${his_id}${birthdayStr}`.replace(/\s+/g, ''), 'utf8')
     .digest('hex');
 };
