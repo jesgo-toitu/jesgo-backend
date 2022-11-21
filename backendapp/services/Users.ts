@@ -528,14 +528,18 @@ export const checkAuth = async (
     const dbAccess = new DbAccess();
     await dbAccess.connectWithConf();
     const ret = (await dbAccess.query(
-      'SELECT $1 AS auth FROM jesgo_user u JOIN jesgo_user_roll r ON u.roll_id = r.roll_id WHERE user_id = $2',
-      [targetAuth, user.user_id]
+      `SELECT ${targetAuth} AS auth FROM jesgo_user u JOIN jesgo_user_roll r ON u.roll_id = r.roll_id WHERE user_id = $1`,
+      [user.user_id]
     )) as { auth: boolean }[];
     await dbAccess.end();
 
     if (ret.length > 0) {
       // レコードがあればその結果を返却する
       myApiReturnObject.body = ret[0].auth;
+      // 認証がfalseであればstatusを変更する
+      if(myApiReturnObject.body === false){
+        myApiReturnObject.statusNum = RESULT.ABNORMAL_TERMINATION;
+      }
     } else {
       // レコードが見つからなければbodyをnullにしてエラーを返却する
       logging(LOGTYPE.ERROR, '不明なエラー', 'Users', 'checkAuth');
