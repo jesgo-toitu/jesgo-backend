@@ -144,7 +144,7 @@ router.get('/userlist', async (req, res, next) => {
     getUsernameFromRequest(req)
   );
   // 権限の確認
-  const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.view);
+  const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.systemManage);
   if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
     res.status(200).send(authResult);
   } else {
@@ -179,7 +179,7 @@ router.post('/signup/', async (req, res, next) => {
   );
 
   // 権限の確認
-  const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.view);
+  const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.systemManage);
   if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
     res.status(200).send(authResult);
   } else {
@@ -204,7 +204,7 @@ router.post('/deleteUser/', async (req, res, next) => {
   );
 
   // 権限の確認
-  const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.view);
+  const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.systemManage);
   if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
     res.status(200).send(authResult);
   } else {
@@ -254,7 +254,7 @@ router.post('/editUser/', async (req, res, next) => {
   );
 
   // 権限の確認
-  const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.view);
+  const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.systemManage);
   if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
     res.status(200).send(authResult);
   } else {
