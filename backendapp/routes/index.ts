@@ -24,6 +24,7 @@ import { uploadZipFile } from '../services/JsonToDatabase';
 import Router from 'express-promise-router';
 import {
   getCaseAndDocument,
+  getInfiniteLoopBlackList,
   getJsonSchema,
   getRootSchemaIds,
   getSchemaTree,
@@ -420,6 +421,41 @@ router.get('/getCaseAndDocument/:caseId', async (req, res, next) => {
       '権限エラー',
       'router',
       '/getCaseAndDocument',
+      getUsernameFromRequest(req)
+    );
+  }
+});
+
+// eslint-disable-next-line
+router.get('/getblacklist/', async (req, res, next) => {
+  logging(
+    LOGTYPE.DEBUG,
+    '呼び出し',
+    'router',
+    '/getblacklist',
+    getUsernameFromRequest(req)
+  );
+  // 権限の確認
+  const authResult: ApiReturnObject = await checkAuth(
+    getToken(req),
+    roll.systemManage
+  );
+  if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
+    res.status(200).send(authResult);
+  }
+  if (authResult.body) {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    getInfiniteLoopBlackList()
+      .then((result) => res.status(200).send(result))
+      .catch(next);
+  }
+  // 権限が無い場合
+  else {
+    logging(
+      LOGTYPE.ERROR,
+      '権限エラー',
+      'router',
+      '/getblacklist',
       getUsernameFromRequest(req)
     );
   }
