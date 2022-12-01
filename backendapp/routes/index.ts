@@ -37,7 +37,7 @@ import {
 import { getSettings, settings, updateSettings } from '../services/Settings';
 import { ApiReturnObject, getToken, RESULT } from '../logic/ApiCommon';
 import { logging, LOGTYPE } from '../logic/Logger';
-import { getPackagedDocument, PackageDocumentRequest } from '../services/Plugin';
+import { getPackagedDocument, getPluginList, PackageDocumentRequest, uploadPluginZipFile } from '../services/Plugin';
 
 const app = express();
 app.use(helmet());
@@ -517,7 +517,7 @@ router.post('/updateSettings/', async (req, res, next) => {
  * プラグイン用 start
  */
 // eslint-disable-next-line
-router.post('/upload/', upload.single('schemas'), async (req, res, next) => {
+router.post('/upload/', upload.single('files'), async (req, res, next) => {
   logging(
     LOGTYPE.DEBUG,
     '呼び出し',
@@ -648,7 +648,79 @@ router.post('/packaged-document/', async (req, res, next) => {
       LOGTYPE.ERROR,
       '権限エラー',
       'router',
-      '/updateSchemas',
+      '/packaged-document',
+      getUsernameFromRequest(req)
+    );
+  }
+});
+
+/**
+ * プラグイン一覧
+ */
+router.get('/plugin-list/', async (req, res, next) => {
+  logging(
+    LOGTYPE.DEBUG,
+    '呼び出し',
+    'router',
+    '/plugin-list',
+    getUsernameFromRequest(req)
+  );
+  // 権限の確認
+  const authResult: ApiReturnObject = await checkAuth(
+    getToken(req),
+    roll.pluginRegisterable
+  );
+  if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
+    res.status(200).send(authResult);
+  }
+  if (authResult.body) {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    getPluginList()
+      .then((result) => res.status(200).send(result))
+      .catch(next);
+  }
+  // 権限が無い場合
+  else {
+    logging(
+      LOGTYPE.ERROR,
+      '権限エラー',
+      'router',
+      '/plugin-list',
+      getUsernameFromRequest(req)
+    );
+  }
+});
+
+// eslint-disable-next-line
+router.post('/upload-plugin/', upload.single('files'), async (req, res, next) => {
+  logging(
+    LOGTYPE.DEBUG,
+    '呼び出し',
+    'router',
+    '/upload-plugin',
+    getUsernameFromRequest(req)
+  );
+  // 権限の確認
+  const authResult: ApiReturnObject = await checkAuth(
+    getToken(req),
+    roll.systemManage
+  );
+  if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
+    res.status(200).send(authResult);
+  }
+  if (authResult.body) {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    uploadPluginZipFile(req.file, authResult.userId)
+      .then((result) => res.status(200).send(result))
+      .catch(next);
+  }
+  // 権限が無い場合
+  else {
+    logging(
+      LOGTYPE.ERROR,
+      '権限エラー',
+      'router',
+      '/upload-plugin',
       getUsernameFromRequest(req)
     );
   }

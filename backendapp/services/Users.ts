@@ -125,6 +125,9 @@ export const roll = {
   remove: 'remove',
   dataManage: 'data_manage',
   systemManage: 'system_manage',
+  pluginRegisterable: 'plugin_registerable',
+  pluginSelect: 'plugin_executable_select',
+  pluginUpdate: 'plugin_executable_update',
 };
 
 /**
@@ -502,7 +505,7 @@ export const getUsernameFromRequest = (req: any) => {
  **/
 export const checkAuth = async (
   token: string | undefined,
-  targetAuth: string
+  targetAuth: string | string[]
 ): Promise<ApiReturnObject> => {
   logging(LOGTYPE.DEBUG, '呼び出し', 'Users', 'checkAuth');
   try {
@@ -527,17 +530,38 @@ export const checkAuth = async (
     const user: dispUser = myApiReturnObject.body as dispUser;
     const dbAccess = new DbAccess();
     await dbAccess.connectWithConf();
+
+    const authList: string[] = [];
+    if (Array.isArray(targetAuth)) {
+      targetAuth = authList;
+    } else {
+      authList.push(targetAuth);
+    }
+
+    let authSql = '';
+    for (let i = 0; i < authList.length; i += 1) {
+      authSql += `${authList[i]} as auth${i}`;
+      if (i < authList.length - 1) {
+        authSql += ',';
+      }
+    }
+
     const ret = (await dbAccess.query(
-      `SELECT ${targetAuth} AS auth FROM jesgo_user u JOIN jesgo_user_roll r ON u.roll_id = r.roll_id WHERE user_id = $1`,
+      `SELECT ${authSql} FROM jesgo_user u JOIN jesgo_user_roll r ON u.roll_id = r.roll_id WHERE user_id = $1`,
       [user.user_id]
-    )) as { auth: boolean }[];
+    )) as object[];
     await dbAccess.end();
 
     if (ret.length > 0) {
       // レコードがあればその結果を返却する
-      myApiReturnObject.body = ret[0].auth;
+
+      // 権限が複数指定されていた場合はいずれかの権限がTrueの場合に権限ありとみなす
+      const auth = Object.entries(ret[0]).some((auth) => auth[1] === true);
+
+      myApiReturnObject.body = auth;
+      myApiReturnObject.userId = user.user_id; // user_idも返す
       // 認証がfalseであればstatusを変更する
-      if(myApiReturnObject.body === false){
+      if (myApiReturnObject.body === false) {
         myApiReturnObject.statusNum = RESULT.ABNORMAL_TERMINATION;
       }
     } else {

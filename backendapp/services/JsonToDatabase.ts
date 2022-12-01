@@ -3,11 +3,11 @@ import { readFileSync, readdirSync, rename } from 'fs';
 import { ApiReturnObject, RESULT } from '../logic/ApiCommon';
 import lodash from 'lodash';
 import { logging, LOGTYPE } from '../logic/Logger';
-import { Extract, ParseStream } from 'unzipper';
+import { Extract } from 'unzipper';
 import * as fs from 'fs';
 import fse from 'fs-extra';
 import * as path from 'path';
-import { Const, escapeText, jesgo_tagging } from '../logic/Utility';
+import { Const, cutTempPath, escapeText, formatDate, formatTime, jesgo_tagging, streamPromise } from '../logic/Utility';
 
 // 定数
 // 一時展開用パス
@@ -259,30 +259,6 @@ export const formatDateStr = (dtStr: string, separator: string) => {
   }
 };
 
-// 日付(Date形式)をyyyy/MM/ddなどの形式に変換
-export const formatDate = (dateObj: Date, separator = '') => {
-  try {
-    const y = dateObj.getFullYear();
-    const m = `00${dateObj.getMonth() + 1}`.slice(-2);
-    const d = `00${dateObj.getDate()}`.slice(-2);
-    return `${y}${separator}${m}${separator}${d}`;
-  } catch {
-    return '';
-  }
-};
-
-// 時刻(Date形式)をHH:mm:ssの形式に変換
-const formatTime = (dateObj: Date, separator = '') => {
-  try {
-    const h = `00${dateObj.getHours()}`.slice(-2);
-    const m = `00${dateObj.getMinutes()}`.slice(-2);
-    const s = `00${dateObj.getSeconds()}`.slice(-2);
-    return `${h}${separator}${m}${separator}${s}`;
-  } catch {
-    return '';
-  }
-};
-
 /**
  * 入力された日付の前日を取得
  * @param date 入力日
@@ -311,20 +287,6 @@ export const undefined2Null = (num: number | undefined): string => {
     return 'NULL';
   }
   return num.toString();
-};
-
-/**
- * 一時展開用のディレクトリパスを削除したファイルパスを返す
- * もともと一時展開用のディレクトリパスが付いていなければファイルパスをそのまま返す
- * @param tempPath 一時展開用のディレクトリパス
- * @param filePath ファイルパス
- * @returns 一時展開用のディレクトリパスを削除したファイルパス
- */
-export const cutTempPath = (tempPath: string, filePath: string): string => {
-  if (filePath.startsWith(tempPath)) {
-    return filePath.slice(tempPath.length);
-  }
-  return filePath;
 };
 
 /**
@@ -1206,16 +1168,6 @@ export const jsonToSchema = async (): Promise<ApiReturnObject> => {
   } finally {
     await dbAccess.end();
   }
-};
-const streamPromise = async (stream: ParseStream) => {
-  return new Promise((resolve, reject) => {
-    stream.on('close', () => {
-      resolve('close');
-    });
-    stream.on('error', (error) => {
-      reject(error);
-    });
-  });
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
