@@ -260,6 +260,7 @@ export type jesgoPluginColumns = {
   all_patient: boolean;
   update_db: boolean;
   attach_patient_info: boolean;
+  show_upload_dialog: boolean;
   filter_schema_query?: string;
   explain?: string;
 };
@@ -278,7 +279,7 @@ export const getPluginList = async () => {
     const pluginRecords = (await dbAccess.query(
       `select
       plugin_id, plugin_name, plugin_version, script_text,
-      target_schema_id, target_schema_id_string, all_patient, update_db, attach_patient_info, filter_schema_query, explain
+      target_schema_id, target_schema_id_string, all_patient, update_db, attach_patient_info, show_upload_dialog, filter_schema_query, explain
       from jesgo_plugin
       where deleted = false
       order by plugin_id`
@@ -341,6 +342,10 @@ const initJs = async (requireEsm: any, filePath: string) => {
           pathModule.join(process.cwd(), filePath),
           { encoding: 'utf8' }
         );
+
+        // show_upload_dialogは未設定時はTrueをデフォルトにする
+        initResult.show_upload_dialog = initResult.show_upload_dialog ?? true;
+
         retValue.initValue = initResult;
       }
     } else {
@@ -543,6 +548,7 @@ const jesgoPluginColmnNames = [
   'all_patient',
   'update_db',
   'attach_patient_info',
+  'show_upload_dialog',
   'filter_schema_query',
   'explain',
   'registrant',
