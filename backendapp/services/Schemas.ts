@@ -81,6 +81,18 @@ export const getJsonSchema = async (
     const ret = (await dbAccess.query(query)) as schemaRecord[];
     await dbAccess.end();
 
+    if(forRelation === false){
+    const offset = new Date().getTimezoneOffset() * 60 * 1000;
+     for (let index = 0; index < ret.length; index++) {
+        // DB内の日付をGMT+0として認識しているので時差分の修正をする
+        ret[index].valid_from = new Date(ret[index].valid_from.getTime() - offset);
+        const until = ret[index].valid_until;
+        if (until) {
+          ret[index].valid_until = new Date(until.getTime() - offset);
+        }
+      }
+    }
+
     return { statusNum: RESULT.NORMAL_TERMINATION, body: ret };
   } catch (e) {
     logging(
@@ -236,15 +248,26 @@ export const updateSchemas = async (
     await dbAccess.connectWithConf();
 
     for (const schema of schemas) {
-      // 現状はサブスキーマ、子スキーマのみ、継承スキーマのみ必要に応じて追加
+      // 時差を調整
+      const offset = new Date().getTimezoneOffset() * 60 * 1000;
+      let validFrom = str2Date(schema.valid_from);
+      let validUntil = str2Date(schema.valid_until);
+      // DB内の日付をGMT+0として認識しているので時差分の修正をする
+      if(validFrom){
+        validFrom = new Date(validFrom.getTime() - offset);
+      }
+      if (validUntil) {
+        validUntil = new Date(validUntil.getTime() - offset);
+      }
+
       await dbAccess.query(
         'UPDATE jesgo_document_schema SET subschema = $1, child_schema = $2, inherit_schema = $3, valid_from = $4, valid_until = $5, hidden = $6 WHERE schema_primary_id = $7',
         [
           schema.subschema,
           schema.child_schema,
           schema.inherit_schema,
-          str2Date(schema.valid_from),
-          str2Date(schema.valid_until),
+          validFrom,
+          validUntil,
           schema.hidden,
           schema.schema_primary_id,
         ]
@@ -385,6 +408,10 @@ export interface SaveDataObjDefine {
  * @returns Date形式かnull
  */
 const str2Date = (str: string | null): Date | null => {
+  // TZの関係でepochTimeを文字列で入れると負の数値になるのでepochTimeが入ってきたときは別処理
+  if(str === '1970-01-01'){
+    return new Date(0);
+  }
   if (str === null || str === '') {
     return null;
   }
