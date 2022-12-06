@@ -1,4 +1,10 @@
+import { formatDateStr } from '../services/JsonToDatabase';
 import { logging, LOGTYPE } from './Logger';
+import crypto from 'crypto';
+
+export interface Obj {
+  [prop: string]: any;
+}
 
 // eslint-disable-next-line @typescript-eslint/no-namespace
 export namespace Const {
@@ -37,4 +43,18 @@ export const isAgoYearFromNow = (date: Date, year: number): boolean => {
   const compareDay = compareDateMillSec / (24 * 60 * 60 * 1000);
   // N年*365日より差が大きかったらN年以上立ってるものとする
   return compareDay > year * 365;
+};
+
+// 患者特定ハッシュ値生成
+export const GetPatientHash = (birthday: Date | string, his_id: string) => {
+  let birthdayStr = '';
+  if (birthday) {
+    birthdayStr = formatDateStr(birthday.toString(), '');
+  }
+
+  // his_id + 生年月日(yyyyMMdd)で生成
+  return crypto
+    .createHash('sha256')
+    .update(`${his_id}${birthdayStr}`.replace(/\s+/g, ''), 'utf8')
+    .digest('hex');
 };
