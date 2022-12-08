@@ -44,6 +44,7 @@ const generateDocument = (
 ) => {
   const parentDoc = srcDocList.find((p) => p.document_id === docId);
   if (parentDoc) {
+    let pushedObject: any;
     // ユニークな文書か否かで処理を分ける
     if (parentDoc.uniqueness) {
       // unique=trueの場合、基本的にはドキュメントをそのままセットする
@@ -68,13 +69,16 @@ const generateDocument = (
     } else {
       // unique=falseの場合、必ず配列にする
       if (
+        // eslint-disable-next-line no-prototype-builtins
         !(baseObject as object).hasOwnProperty(parentDoc.title) ||
         !Array.isArray(baseObject[parentDoc.title])
       ) {
         baseObject[parentDoc.title] = [];
       }
 
-      baseObject[parentDoc.title].push(parentDoc.document);
+      pushedObject = parentDoc.document;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+      baseObject[parentDoc.title].push(pushedObject);
     }
 
     // 子ドキュメント取得
@@ -83,7 +87,10 @@ const generateDocument = (
         generateDocument(
           childDocId,
           srcDocList,
-          baseObject[parentDoc.title] as Obj
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+          pushedObject
+            ? (pushedObject as Obj)
+            : (baseObject[parentDoc.title] as Obj)
         );
       });
     }
