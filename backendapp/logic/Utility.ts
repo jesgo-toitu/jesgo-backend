@@ -58,3 +58,7 @@ export const GetPatientHash = (birthday: Date | string, his_id: string) => {
     .update(`${his_id}${birthdayStr}`.replace(/\s+/g, ''), 'utf8')
     .digest('hex');
 };
+
+// 日付文字列判定
+export const isDateStr = (dateStr: string) =>
+  !Number.isNaN(new Date(dateStr).getTime());
