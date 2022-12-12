@@ -751,3 +751,24 @@ export const uploadPluginZipFile = async (
     });
   }
 };
+
+export const deletePlugin = async (pluginId:number) => {
+  logging(LOGTYPE.DEBUG, '呼び出し', 'Plugin', 'deletePlugin');
+
+  const dbAccess = new DbAccess();
+  await dbAccess.connectWithConf();
+
+  let result = RESULT.NORMAL_TERMINATION;
+
+  const ret = await dbAccess.query(
+    'UPDATE jesgo_plugin SET deleted = true WHERE plugin_id = $1',
+    [pluginId]
+  );
+  await dbAccess.end();
+  if (ret) {
+    logging(LOGTYPE.INFO, `delete success plugin_id: ${pluginId}`, 'Plugin', 'deletePlugin');
+  } else {
+    result = RESULT.ABNORMAL_TERMINATION;
+  }
+  return { statusNum: result, body: null };
+}
