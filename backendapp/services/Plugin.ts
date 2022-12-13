@@ -45,6 +45,7 @@ export type jesgoDocumentSelectItem = {
   child_documents?: number[];
   schema_id: number;
   schema_primary_id: number;
+  uniqueness: boolean;
   title: string;
   root_order: number;
 };
@@ -57,24 +58,41 @@ const generateDocument = (
 ) => {
   const parentDoc = srcDocList.find((p) => p.document_id === docId);
   if (parentDoc) {
-    // 同名タイトルがあれば配列にする
-    // eslint-disable-next-line no-prototype-builtins
-    if ((baseObject as object).hasOwnProperty(parentDoc.title)) {
-      if (!Array.isArray(baseObject[parentDoc.title])) {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        const tmp = baseObject[parentDoc.title];
-        baseObject[parentDoc.title] = [];
+    let pushedObject: any;
+    // ユニークな文書か否かで処理を分ける
+    if (parentDoc.uniqueness) {
+      // unique=trueの場合、基本的にはドキュメントをそのままセットする
+      // 何かの手違いで複数作成されていた場合は配列にする
+      if ((baseObject as object).hasOwnProperty(parentDoc.title)) {
+        if (!Array.isArray(baseObject[parentDoc.title])) {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+          const tmp = baseObject[parentDoc.title]; // 既存ドキュメントを一旦退避
+          baseObject[parentDoc.title] = [];
 
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
-        baseObject[parentDoc.title].push(tmp);
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
-        baseObject[parentDoc.title].push(parentDoc.document);
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+          baseObject[parentDoc.title].push(tmp);
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+          baseObject[parentDoc.title].push(parentDoc.document);
+        } else {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+          baseObject[parentDoc.title].push(parentDoc.document);
+        }
       } else {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
-        baseObject[parentDoc.title].push(parentDoc.document);
+        baseObject[parentDoc.title] = parentDoc.document;
       }
     } else {
-      baseObject[parentDoc.title] = lodash.cloneDeep(parentDoc.document);
+      // unique=falseの場合、必ず配列にする
+      if (
+        // eslint-disable-next-line no-prototype-builtins
+        !(baseObject as object).hasOwnProperty(parentDoc.title) ||
+        !Array.isArray(baseObject[parentDoc.title])
+      ) {
+        baseObject[parentDoc.title] = [];
+      }
+
+      pushedObject = parentDoc.document;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+      baseObject[parentDoc.title].push(pushedObject);
     }
 
     // 子ドキュメント取得
@@ -83,7 +101,10 @@ const generateDocument = (
         generateDocument(
           childDocId,
           srcDocList,
-          baseObject[parentDoc.title] as Obj
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+          pushedObject
+            ? (pushedObject as Obj)
+            : (baseObject[parentDoc.title] as Obj)
         );
       });
     }
@@ -149,9 +170,10 @@ export const getPackagedDocument = async (reqest: PackageDocumentRequest) => {
     doc.schema_id,
     doc.schema_primary_id,
     sc.title,
+    sc.uniqueness,
     doc.root_order
   from jesgo_document doc 
-  left join jesgo_document_schema sc on doc.schema_id = sc.schema_id `;
+  left join jesgo_document_schema sc on doc.schema_primary_id = sc.schema_primary_id `;
     if (whereList.length > 0) {
       select += 'where ';
       for (let i = 0; i < whereList.length; i++) {
@@ -175,9 +197,10 @@ export const getPackagedDocument = async (reqest: PackageDocumentRequest) => {
     doc.schema_id,
     doc.schema_primary_id,
     sc.title,
+    sc.uniqueness,
     doc.root_order 
   from tmp, jesgo_document as doc 
-    left join jesgo_document_schema sc on doc.schema_id = sc.schema_id 
+    left join jesgo_document_schema sc on doc.schema_primary_id = sc.schema_primary_id 
   where doc.document_id = any(tmp.child_documents) and doc.deleted = false
   )
   select * from tmp order by document_id desc`;
