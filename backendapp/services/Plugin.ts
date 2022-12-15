@@ -610,7 +610,7 @@ const registerToJesgoPluginDB = async (
           // plugin_name除いた分indexずれるので元のindexを使用する
           return `${col} = $${jesgoPluginColmnNames.indexOf(col) + 1}`;
         })
-        .join(', ')}, last_updated = NOW()`;
+        .join(', ')}, last_updated = NOW(), deleted = false`;
 
     for (const info of pluginInfoList) {
       try {
