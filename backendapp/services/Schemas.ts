@@ -2,7 +2,7 @@ import lodash from 'lodash';
 import { logging, LOGTYPE } from '../logic/Logger';
 import { ApiReturnObject, RESULT } from '../logic/ApiCommon';
 import { DbAccess } from '../logic/DbAccess';
-import { JSONSchema7 } from './JsonToDatabase';
+import { formatDateStr, JSONSchema7 } from './JsonToDatabase';
 
 export interface getJsonSchemaBody {
   ids: number[] | undefined;
@@ -82,11 +82,13 @@ export const getJsonSchema = async (
     const ret = (await dbAccess.query(query)) as schemaRecord[];
     await dbAccess.end();
 
-    if(forRelation === false){
-    const offset = new Date().getTimezoneOffset() * 60 * 1000;
-     for (let index = 0; index < ret.length; index++) {
+    if (forRelation === false) {
+      const offset = new Date().getTimezoneOffset() * 60 * 1000;
+      for (let index = 0; index < ret.length; index++) {
         // DB内の日付をGMT+0として認識しているので時差分の修正をする
-        ret[index].valid_from = new Date(ret[index].valid_from.getTime() - offset);
+        ret[index].valid_from = new Date(
+          ret[index].valid_from.getTime() - offset
+        );
         const until = ret[index].valid_until;
         if (until) {
           ret[index].valid_until = new Date(until.getTime() - offset);
@@ -184,7 +186,11 @@ export const analyseSchemaTree = async (): Promise<ApiReturnObject> => {
     }
     return {
       statusNum: RESULT.NORMAL_TERMINATION,
-      body: { treeSchema: schemaTrees, errorMessages: errorMessages, blackList },
+      body: {
+        treeSchema: schemaTrees,
+        errorMessages: errorMessages,
+        blackList,
+      },
     };
   } catch (e) {
     logging(
@@ -198,43 +204,51 @@ export const analyseSchemaTree = async (): Promise<ApiReturnObject> => {
       body: {
         treeSchema: [],
         errorMessages: ['スキーマツリーの取得に失敗しました。'],
-        blackList: [], 
+        blackList: [],
       },
     };
   }
 };
 
-export const getInfiniteLoopBlackList = async  (): Promise<ApiReturnObject> => {
+export const getInfiniteLoopBlackList = async (): Promise<ApiReturnObject> => {
   logging(LOGTYPE.DEBUG, `呼び出し`, 'Schemas', 'getInfiniteLoopBlackList');
-  const returned:ApiReturnObject = await analyseSchemaTree();
-  if(returned.statusNum === RESULT.NORMAL_TERMINATION){
-    const apiBody = returned.body as {blackList:number[]};
+  const returned: ApiReturnObject = await analyseSchemaTree();
+  if (returned.statusNum === RESULT.NORMAL_TERMINATION) {
+    const apiBody = returned.body as { blackList: number[] };
     return {
       statusNum: returned.statusNum,
-      body: { 
+      body: {
         blackList: apiBody.blackList,
-      }
+      },
     };
   }
-  logging(LOGTYPE.ERROR, `無限ループブラックリストが正常に取得できませんでした。`, 'Schemas', 'getInfiniteLoopBlackList');
+  logging(
+    LOGTYPE.ERROR,
+    `無限ループブラックリストが正常に取得できませんでした。`,
+    'Schemas',
+    'getInfiniteLoopBlackList'
+  );
   return {
     statusNum: returned.statusNum,
-    body: { 
+    body: {
       blackList: [] as number[],
-    }
+    },
   };
 };
 
 export const getSchemaTree = async (): Promise<ApiReturnObject> => {
   logging(LOGTYPE.DEBUG, `呼び出し`, 'Schemas', 'getScemaTree');
-  const returned:ApiReturnObject = await analyseSchemaTree();
-  const apiBody = returned.body as {treeSchema:treeSchema[], errorMessages:string[]};
+  const returned: ApiReturnObject = await analyseSchemaTree();
+  const apiBody = returned.body as {
+    treeSchema: treeSchema[];
+    errorMessages: string[];
+  };
   return {
     statusNum: returned.statusNum,
-    body: { 
-      treeSchema: apiBody.treeSchema, 
+    body: {
+      treeSchema: apiBody.treeSchema,
       errorMessages: apiBody.errorMessages,
-    }
+    },
   };
 };
 
@@ -352,7 +366,7 @@ export const updateSchemas = async (
       let validFrom = str2Date(schema.valid_from);
       let validUntil = str2Date(schema.valid_until);
       // DB内の日付をGMT+0として認識しているので時差分の修正をする
-      if(validFrom){
+      if (validFrom) {
         validFrom = new Date(validFrom.getTime() - offset);
       }
       if (validUntil) {
@@ -507,12 +521,13 @@ export interface SaveDataObjDefine {
  * @returns Date形式かnull
  */
 const str2Date = (str: string | null): Date | null => {
-  // TZの関係でepochTimeを文字列で入れると負の数値になるのでepochTimeが入ってきたときは別処理
-  if(str === '1970-01-01'){
-    return new Date(0);
-  }
   if (str === null || str === '') {
     return null;
+  }
+  // TZの関係でepochTimeを文字列で入れると負の数値になるのでepochTimeが入ってきたときは別処理
+  const epoch = '1970-01-01';
+  if (str === epoch || formatDateStr(str, '-') === epoch) {
+    return new Date(0);
   }
   const date = new Date(str);
   if (date.getTime()) {
