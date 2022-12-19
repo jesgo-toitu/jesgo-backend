@@ -21,7 +21,7 @@ import pathModule from 'path';
 
 export interface PackageDocumentRequest {
   jesgoCaseList: jesgoCaseDefine[];
-  schema_id?: number;
+  schema_ids?: number[];
   document_id?: number;
   attachPatientInfoDetail?: boolean;
 }
@@ -117,7 +117,7 @@ const generateDocument = (
  * @returns
  */
 export const getPackagedDocument = async (reqest: PackageDocumentRequest) => {
-  const { jesgoCaseList, schema_id, document_id, attachPatientInfoDetail } =
+  const { jesgoCaseList, schema_ids, document_id, attachPatientInfoDetail } =
     reqest;
 
   const ret: PatientItemDefine[] = [];
@@ -154,8 +154,8 @@ export const getPackagedDocument = async (reqest: PackageDocumentRequest) => {
     // ドキュメントIDまたはスキーマIDで抽出
     if (document_id) {
       whereList.push(['document_id', document_id]);
-    } else if (schema_id) {
-      whereList.push(['schema_id', schema_id]);
+    } else if (schema_ids) {
+      whereList.push(['schema_id', schema_ids]);
     }
 
     // 再帰クエリで指定ドキュメントと子ドキュメントを一括取得する
@@ -241,15 +241,15 @@ export const getPackagedDocument = async (reqest: PackageDocumentRequest) => {
           // 対象ドキュメントもしくはスキーマがあればそちらで抽出
           if (document_id) {
             return p.document_id == document_id;
-          } else if (schema_id) {
-            return p.schema_id === schema_id;
+          } else if (schema_ids && schema_ids.length > 0) {
+            return schema_ids.includes(p.schema_id);
           } else {
             // ドキュメント未指定の場合はルートドキュメントから処理
             return p.root_order > -1;
           }
         })
         .sort((f, s) =>
-          document_id || schema_id ? 0 : f.root_order - s.root_order
+          document_id || schema_ids ? 0 : f.root_order - s.root_order
         );
       // 同名タイトルでグループ化
       const group = lodash.groupBy(filtered, 'title');
