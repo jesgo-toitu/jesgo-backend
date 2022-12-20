@@ -23,6 +23,7 @@ export interface PackageDocumentRequest {
   jesgoCaseList: jesgoCaseDefine[];
   schema_ids?: number[];
   document_id?: number;
+  filter_query?: string;
   attachPatientInfoDetail?: boolean;
 }
 
@@ -117,7 +118,8 @@ const generateDocument = (
  * @returns
  */
 export const getPackagedDocument = async (reqest: PackageDocumentRequest) => {
-  const { jesgoCaseList, schema_ids, document_id, attachPatientInfoDetail } =
+  logging(LOGTYPE.DEBUG, '呼び出し', 'Plugin', 'getPackagedDocument');
+  const { jesgoCaseList, schema_ids, document_id, filter_query, attachPatientInfoDetail } =
     reqest;
 
   const ret: PatientItemDefine[] = [];
@@ -157,6 +159,10 @@ export const getPackagedDocument = async (reqest: PackageDocumentRequest) => {
     } else if (schema_ids) {
       whereList.push(['schema_id', schema_ids]);
     }
+    // フィルターが設定されている場合は追加
+    if (filter_query) {
+      whereList.push(['document', filter_query])
+    }
 
     // 再帰クエリで指定ドキュメントと子ドキュメントを一括取得する
     // #region [ 一連のドキュメント取得用SQL ]
@@ -181,6 +187,8 @@ export const getPackagedDocument = async (reqest: PackageDocumentRequest) => {
 
         if (Array.isArray(whereList[i][1])) {
           select += `doc.${whereList[i][0]} = any($${i + 1}) `;
+        } else if(whereList[i][0] === 'document') {
+          select += `doc.${whereList[i][0]} @@ $${i + 1} `;
         } else {
           select += `doc.${whereList[i][0]} = $${i + 1} `;
         }
@@ -264,7 +272,8 @@ export const getPackagedDocument = async (reqest: PackageDocumentRequest) => {
 
       ret.push(patItem);
     }
-  } catch {
+  } catch(err) {
+    logging(LOGTYPE.ERROR, `${(err as Error).message}`, 'Plugin', 'getPackagedDocument');
     return { statusNum: RESULT.ABNORMAL_TERMINATION, body: null };
   } finally {
     await dbAccess.end();
