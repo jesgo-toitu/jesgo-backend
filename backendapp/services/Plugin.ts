@@ -74,7 +74,17 @@ const generateDocument = (
         !(baseObject as object).hasOwnProperty(parentDoc.title) ||
         !Array.isArray(baseObject[parentDoc.title])
       ) {
+        let tmp: any;
+        if (baseObject[parentDoc.title]) {
+          // 値があれば一旦退避
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+          tmp = baseObject[parentDoc.title];
+        }
         baseObject[parentDoc.title] = [];
+        if (tmp) {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+          baseObject[parentDoc.title].push(tmp);
+        }
       }
 
       pushedObject = parentDoc.document;
