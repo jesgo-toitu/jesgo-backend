@@ -100,6 +100,9 @@ export interface localStorageObject {
   is_add_roll: boolean;
   is_edit_roll: boolean;
   is_remove_roll: boolean;
+  is_plugin_registerable: boolean;
+  is_plugin_executable_select: boolean;
+  is_plugin_executable_update: boolean;
   is_data_manage_roll: boolean;
   is_system_manage_roll: boolean;
 }
@@ -111,6 +114,9 @@ interface rollAuth {
   remove: boolean;
   data_manage: boolean;
   system_manage: boolean;
+  plugin_registerable: boolean;
+  plugin_executable_select: boolean;
+  plugin_executable_update: boolean;
 }
 
 export interface userObject extends dispUser {
@@ -601,7 +607,7 @@ export const loginUser = async (
     };
   }
   const roll = (await dbAccess.query(
-    'SELECT view, add, edit, remove, data_manage, system_manage FROM jesgo_user_roll WHERE roll_id = $1',
+    'SELECT view, add, edit, remove, plugin_registerable, plugin_executable_select, plugin_executable_update, data_manage, system_manage FROM jesgo_user_roll WHERE roll_id = $1',
     [ret[0].roll_id]
   )) as rollAuth[];
   await dbAccess.end();
@@ -617,6 +623,9 @@ export const loginUser = async (
       is_add_roll: roll[0].add,
       is_edit_roll: roll[0].edit,
       is_remove_roll: roll[0].remove,
+      is_plugin_registerable: roll[0].plugin_registerable,
+      is_plugin_executable_select: roll[0].plugin_executable_select,
+      is_plugin_executable_update: roll[0].plugin_executable_update,
       is_data_manage_roll: roll[0].data_manage,
       is_system_manage_roll: roll[0].system_manage,
     };
