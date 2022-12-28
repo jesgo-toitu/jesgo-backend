@@ -65,6 +65,7 @@ const generateDocument = (
       // unique=trueの場合、基本的にはドキュメントをそのままセットする
       // 何かの手違いで複数作成されていた場合は配列にする
       if ((baseObject as object).hasOwnProperty(parentDoc.title)) {
+        pushedObject = parentDoc.document;
         if (!Array.isArray(baseObject[parentDoc.title])) {
           // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           const tmp = baseObject[parentDoc.title]; // 既存ドキュメントを一旦退避
@@ -73,10 +74,10 @@ const generateDocument = (
           // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
           baseObject[parentDoc.title].push(tmp);
           // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
-          baseObject[parentDoc.title].push(parentDoc.document);
+          baseObject[parentDoc.title].push(pushedObject);
         } else {
           // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
-          baseObject[parentDoc.title].push(parentDoc.document);
+          baseObject[parentDoc.title].push(pushedObject);
         }
       } else {
         baseObject[parentDoc.title] = parentDoc.document;
@@ -88,7 +89,17 @@ const generateDocument = (
         !(baseObject as object).hasOwnProperty(parentDoc.title) ||
         !Array.isArray(baseObject[parentDoc.title])
       ) {
+        let tmp: any;
+        if (baseObject[parentDoc.title]) {
+          // 値があれば一旦退避
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+          tmp = baseObject[parentDoc.title];
+        }
         baseObject[parentDoc.title] = [];
+        if (tmp) {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+          baseObject[parentDoc.title].push(tmp);
+        }
       }
 
       pushedObject = parentDoc.document;

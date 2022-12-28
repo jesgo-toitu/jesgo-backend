@@ -108,3 +108,6 @@ export const streamPromise = async (stream: ParseStream) => {
     });
   });
 };
+// 日付文字列判定
+export const isDateStr = (dateStr: string) =>
+  !Number.isNaN(new Date(dateStr).getTime());
