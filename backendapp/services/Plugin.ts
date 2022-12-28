@@ -608,10 +608,10 @@ const registerToJesgoPluginDB = async (
     // 同じplugin_nameのものが登録されていたらinsertからupdateに切り替える(on conflict使用)
     const sql = `insert into jesgo_plugin (${jesgoPluginColmnNames.join(
       ', '
-    )}, last_updated) 
+    )}, last_updated, deleted) 
       values (${jesgoPluginColmnNames
         .map((_col, idx) => `$${idx + 1}`)
-        .join(', ')}, NOW()) 
+        .join(', ')}, NOW(), false) 
       on conflict (plugin_name) 
       do update set ${jesgoPluginColmnNames
         .filter((p) => p !== 'plugin_name')
