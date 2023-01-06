@@ -7,7 +7,7 @@ import { Extract, ParseStream } from 'unzipper';
 import * as fs from 'fs';
 import fse from 'fs-extra';
 import * as path from 'path';
-import { Const, escapeText, jesgo_tagging } from '../logic/Utility';
+import { Const, escapeText, isDateStr, jesgo_tagging } from '../logic/Utility';
 
 // 定数
 // 一時展開用パス
@@ -48,7 +48,7 @@ export interface JSONSchema7Object {
 // Workaround for infinite type recursion
 // https://github.com/Microsoft/TypeScript/issues/3496#issuecomment-128553540
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
-export interface JSONSchema7Array extends Array<JSONSchema7Type> { }
+export interface JSONSchema7Array extends Array<JSONSchema7Type> {}
 
 /**
  * Meta schema
@@ -114,21 +114,21 @@ export interface JSONSchema7 {
   minProperties?: number | undefined;
   required?: string[] | undefined;
   properties?:
-  | {
-    [key: string]: JSONSchema7Definition;
-  }
-  | undefined;
+    | {
+        [key: string]: JSONSchema7Definition;
+      }
+    | undefined;
   patternProperties?:
-  | {
-    [key: string]: JSONSchema7Definition;
-  }
-  | undefined;
+    | {
+        [key: string]: JSONSchema7Definition;
+      }
+    | undefined;
   additionalProperties?: JSONSchema7Definition | undefined;
   dependencies?:
-  | {
-    [key: string]: JSONSchema7Definition | string[];
-  }
-  | undefined;
+    | {
+        [key: string]: JSONSchema7Definition | string[];
+      }
+    | undefined;
   propertyNames?: JSONSchema7Definition | undefined;
 
   /**
@@ -161,10 +161,10 @@ export interface JSONSchema7 {
    * @see https://tools.ietf.org/html/draft-handrews-json-schema-validation-01#section-9
    */
   definitions?:
-  | {
-    [key: string]: JSONSchema7Definition;
-  }
-  | undefined;
+    | {
+        [key: string]: JSONSchema7Definition;
+      }
+    | undefined;
 
   /**
    * @see https://tools.ietf.org/html/draft-handrews-json-schema-validation-01#section-10
@@ -180,10 +180,10 @@ export interface JSONSchema7 {
    * JSONSchema 未対応プロパティ
    */
   $defs?:
-  | {
-    [key: string]: JSONSchema7Definition;
-  }
-  | undefined;
+    | {
+        [key: string]: JSONSchema7Definition;
+      }
+    | undefined;
   units?: string | undefined;
 
   /**
@@ -214,6 +214,7 @@ type oldSchema = {
   valid_until: Date | null;
   version_major: number;
   version_minor: number;
+  hidden: boolean | null;
 };
 
 /** Schema加工用Utility */
@@ -359,24 +360,26 @@ export const hasInheritError = async (
  * @param stringId 確認対象のschema_string_id
  * @returns 存在する場合、そのschema_idを、存在しない場合は-1を返す
  */
-const getOldSchema = async (stringId: string): Promise<oldSchema> => {
+const getOldSchema = async (stringId: string): Promise<oldSchema[]> => {
   logging(LOGTYPE.DEBUG, `呼び出し`, 'JsonToDatabase', 'getOldSchema');
-  const query = `SELECT schema_id, valid_from, valid_until, version_major, version_minor, schema_primary_id
+  const query = `SELECT schema_id, valid_from, valid_until, version_major, version_minor, schema_primary_id, hidden
    FROM jesgo_document_schema WHERE schema_id_string = '${stringId}'
-   ORDER BY schema_primary_id DESC LIMIT 1;`;
+   ORDER BY schema_primary_id DESC;`;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const ret: oldSchema[] = (await dbAccess.query(query)) as oldSchema[];
   if (ret.length > 0) {
     // DB内の日付をGMT+0として認識しているので時差分の修正をする
     const offset = new Date().getTimezoneOffset() * 60 * 1000;
-    ret[0].valid_from = new Date(ret[0].valid_from.getTime() - offset);
-    if(ret[0].valid_until) {
-      ret[0].valid_until = new Date(ret[0].valid_until.getTime() - offset);
+    for (let i = 0; i < ret.length; i += 1) {
+      ret[i].valid_from = new Date(ret[i].valid_from.getTime() - offset);
+      if (ret[i].valid_until) {
+        ret[i].valid_until = new Date(ret[i].valid_until!.getTime() - offset);
+      }
     }
-    
+
     // 既に存在するschema_string_id
     // eslint-disable-next-line @typescript-eslint/no-unsafe-argument,@typescript-eslint/no-unsafe-member-access
-    return ret[0];
+    return ret;
   }
   const newInsertId = await getInsertId();
   // 存在しない場合は新規の構造体を返す
@@ -387,8 +390,9 @@ const getOldSchema = async (stringId: string): Promise<oldSchema> => {
     valid_until: null,
     version_major: 0,
     version_minor: 0,
+    hidden: null,
   };
-  return newSchema;
+  return [newSchema];
 };
 
 /**
@@ -449,7 +453,7 @@ const hasVersionUpdateError = (
 };
 
 const makeInsertQuery = (
-  schemaInfo: oldSchema,
+  schemaInfoList: oldSchema[],
   json: JSONSchema7,
   fileName: string,
   errorMessages: string[]
@@ -458,6 +462,10 @@ const makeInsertQuery = (
   let schemaIdString: string = json.$id ?? '';
   const title: string = json.title ?? '';
   let errorFlag = false;
+
+  const latestSchemaInfo = schemaInfoList[0]; // 有効フラグ関係なく現在の最新スキーマ(バージョンチェック用)
+  const validSchemaInfo = schemaInfoList.find((p) => !p.hidden)!; // 有効な現在の最新スキーマ
+
   let subQuery = ['', ''];
   if (schemaIdString === '') {
     logging(
@@ -496,12 +504,12 @@ const makeInsertQuery = (
   // INSERT
   let query =
     'INSERT INTO jesgo_document_schema (schema_id, schema_id_string, title, subtitle, document_schema';
-  let value = [
-    schemaInfo.schema_id.toString(),
+  const value = [
+    validSchemaInfo.schema_id.toString(),
     schemaIdString,
     titles[0],
     subtitle,
-    JSON.stringify(json)
+    JSON.stringify(json),
   ];
 
   if (json['jesgo:unique'] != null) {
@@ -511,17 +519,57 @@ const makeInsertQuery = (
 
   // スキーマ有効期限の処理
   if (json['jesgo:valid'] != null) {
-    if (json['jesgo:valid'][0] != null) {
-      // 有効期限開始日の指定あり
-      query += ', valid_from';
-      value.push(json['jesgo:valid'][0])
+    const validDate: (Date | undefined)[] = [undefined, undefined];
+    let validFromStr = json['jesgo:valid'][0];
+    if (validFromStr != null) {
+      // 未設定ならエポック日(1970-01-01)
+      if (validFromStr === '') {
+        validFromStr = '1970-01-01';
+      }
 
-      const newValidFrom = new Date(json['jesgo:valid'][0]);
-      // 旧スキーマと有効期限開始日が同じか、古い場合はエラー
-      if (schemaInfo.valid_from >= newValidFrom) {
+      if (isDateStr(validFromStr)) {
+        // 有効期限開始日の指定あり
+        query += ', valid_from';
+        value.push(validFromStr);
+
+        const newValidFrom = new Date(validFromStr);
+        validDate[0] = newValidFrom;
+        // 旧スキーマと有効期限開始日が同じか、古い場合はエラー
+        if (validSchemaInfo && validSchemaInfo.valid_from >= newValidFrom) {
+          logging(
+            LOGTYPE.ERROR,
+            `スキーマ(id=${schemaIdString})の有効期限開始日は登録済のものより新しくしてください。`,
+            'JsonToDatabase',
+            'makeInsertQuery'
+          );
+          errorMessages.push(
+            `[${cutTempPath(
+              dirPath,
+              fileName
+            )}]スキーマ(id=${schemaIdString})の有効期限開始日は登録済のものより新しくしてください。`
+          );
+          errorFlag = true;
+        } else {
+          // 新スキーマの開始日があれば旧スキーマの有効期限終了日を新スキーマの有効期限開始日前日に設定する
+
+          // schema_primary_idが-1であれば旧スキーマが存在しないので対応しない
+          if (validSchemaInfo.schema_primary_id !== -1) {
+            logging(
+              LOGTYPE.DEBUG,
+              `スキーマ(id=${schemaIdString}, Pid=${validSchemaInfo.schema_primary_id})の有効期限終了日を更新`,
+              'JsonToDatabase',
+              'makeInsertQuery'
+            );
+            subQuery = [
+              formatDate(getPreviousDay(new Date(newValidFrom)), '-'),
+              validSchemaInfo.schema_primary_id.toString(),
+            ];
+          }
+        }
+      } else {
         logging(
           LOGTYPE.ERROR,
-          `スキーマ(id=${schemaIdString})の有効期限開始日は登録済のものより新しくしてください。`,
+          `スキーマ(id=${schemaIdString})の有効期限開始日はyyyy-MM-ddの形式で記述してください。`,
           'JsonToDatabase',
           'makeInsertQuery'
         );
@@ -529,35 +577,49 @@ const makeInsertQuery = (
           `[${cutTempPath(
             dirPath,
             fileName
-          )}]スキーマ(id=${schemaIdString})の有効期限開始日は登録済のものより新しくしてください。`
+          )}]スキーマ(id=${schemaIdString})の有効期限開始日はyyyy-MM-ddの形式で記述してください`
         );
         errorFlag = true;
-      } else {
-        // 旧スキーマに有効期限終了日が設定されていないか、新スキーマの有効期限開始日以降であれば
-        // 旧スキーマの有効期限終了日を新スキーマの有効期限開始日前日に設定する
-        if (
-          schemaInfo.valid_until === null ||
-          schemaInfo.valid_until >= newValidFrom
-        ) {
-          // schema_primary_idが-1であれば旧スキーマが存在しないので対応しない
-          if (schemaInfo.schema_primary_id !== -1) {
-            logging(
-              LOGTYPE.DEBUG,
-              `スキーマ(id=${schemaIdString}, Pid=${schemaInfo.schema_primary_id})の有効期限終了日を更新`,
-              'JsonToDatabase',
-              'makeInsertQuery'
-            );
-            subQuery = [
-              formatDate(getPreviousDay(new Date(newValidFrom)), '-'),
-              schemaInfo.schema_primary_id.toString()
-            ]
-          }
-        }
       }
     }
-    if (json['jesgo:valid'][1] != null) {
-      query += ', valid_until';
-      value.push(json['jesgo:valid'][1]);
+    const validUntilStr = json['jesgo:valid'][1];
+    if (validUntilStr) {
+      if (isDateStr(validUntilStr)) {
+        query += ', valid_until';
+        value.push(validUntilStr);
+        validDate[1] = new Date(validUntilStr);
+      } else {
+        logging(
+          LOGTYPE.ERROR,
+          `スキーマ(id=${schemaIdString})の有効期限終了日はyyyy-MM-ddの形式で記述してください。`,
+          'JsonToDatabase',
+          'makeInsertQuery'
+        );
+        errorMessages.push(
+          `[${cutTempPath(
+            dirPath,
+            fileName
+          )}]スキーマ(id=${schemaIdString})の有効期限終了日はyyyy-MM-ddの形式で記述してください`
+        );
+        errorFlag = true;
+      }
+    }
+
+    // 開始日と終了日逆転チェック
+    if (validDate[0] && validDate[1] && validDate[0] > validDate[1]) {
+      logging(
+        LOGTYPE.ERROR,
+        `スキーマ(id=${schemaIdString})の有効期限終了日は開始日より新しくしてください。`,
+        'JsonToDatabase',
+        'makeInsertQuery'
+      );
+      errorMessages.push(
+        `[${cutTempPath(
+          dirPath,
+          fileName
+        )}]スキーマ(id=${schemaIdString})の有効期限終了日は開始日より新しくしてください。`
+      );
+      errorFlag = true;
     }
   } else {
     // 開始日の指定なし
@@ -565,14 +627,17 @@ const makeInsertQuery = (
     let newValidFrom = new Date(0);
 
     // 旧スキーマと有効期限開始日が同じか、古い場合は旧スキーマの翌日を開始日とする
-    if (schemaInfo.valid_from >= newValidFrom) {
-      newValidFrom = new Date(schemaInfo.valid_from);
-      newValidFrom.setDate(newValidFrom.getDate() + 1)
+    if (validSchemaInfo.valid_from >= newValidFrom) {
+      newValidFrom = new Date(validSchemaInfo.valid_from);
+      newValidFrom.setDate(newValidFrom.getDate() + 1);
     }
 
     logging(
       LOGTYPE.DEBUG,
-      `スキーマ(id=${schemaIdString})の有効期限開始日を ${formatDate(newValidFrom, '-')} に自動設定`,
+      `スキーマ(id=${schemaIdString})の有効期限開始日を ${formatDate(
+        newValidFrom,
+        '-'
+      )} に自動設定`,
       'JsonToDatabase',
       'makeInsertQuery'
     );
@@ -580,22 +645,21 @@ const makeInsertQuery = (
     // 旧スキーマに有効期限終了日が設定されていないか、新スキーマの有効期限開始日以降であれば
     // 旧スキーマの有効期限終了日を新スキーマの有効期限開始日前日に設定する
     if (
-      schemaInfo.valid_until === null ||
-      schemaInfo.valid_until >= newValidFrom
+      validSchemaInfo.valid_until === null ||
+      validSchemaInfo.valid_until >= newValidFrom
     ) {
       // schema_primary_idが-1であれば旧スキーマが存在しないので対応しない
-      if (schemaInfo.schema_primary_id !== -1) {
+      if (validSchemaInfo.schema_primary_id !== -1) {
         logging(
           LOGTYPE.DEBUG,
-          `スキーマ(id=${schemaIdString}, Pid=${schemaInfo.schema_primary_id})の有効期限終了日を更新`,
+          `スキーマ(id=${schemaIdString}, Pid=${validSchemaInfo.schema_primary_id})の有効期限終了日を更新`,
           'JsonToDatabase',
           'makeInsertQuery'
         );
         subQuery = [
           formatDate(getPreviousDay(new Date(newValidFrom)), '-'),
-          schemaInfo.schema_primary_id.toString()
-        ]
-
+          validSchemaInfo.schema_primary_id.toString(),
+        ];
       }
     }
     query += ', valid_from';
@@ -620,8 +684,8 @@ const makeInsertQuery = (
       // 新規登録する物が登録済よりバージョンが低いか同じ場合、エラーを返す
       if (
         hasVersionUpdateError(
-          schemaInfo.version_major,
-          schemaInfo.version_minor,
+          latestSchemaInfo.version_major,
+          latestSchemaInfo.version_minor,
           majorVersion,
           minorVersion
         )
@@ -679,10 +743,9 @@ const makeInsertQuery = (
   value.push('0');
 
   // valueの項目数で代入項目を生成する
-  query += `) VALUES (${
-    value.map((s, i) => '$' + (i + 1).toString())
-    .join(', ')
-  })`;
+  query += `) VALUES (${value
+    .map((s, i) => '$' + (i + 1).toString())
+    .join(', ')})`;
 
   // 一つでもエラーが出ていたら有効なクエリは返さない
   if (errorFlag) {
@@ -698,6 +761,7 @@ const fileListInsert = async (
 ): Promise<number> => {
   logging(LOGTYPE.DEBUG, `呼び出し`, 'JsonToDatabase', 'fileListInsert');
   let updateNum = 0;
+  const jsons: JSONSchema7[] = [];
   for (let i = 0; i < fileList.length; i++) {
     if (!fileList[i].endsWith('.json')) {
       logging(
@@ -720,6 +784,7 @@ const fileListInsert = async (
     let json: JSONSchema7 = {};
     try {
       json = JSON.parse(readFileSync(fileList[i], 'utf8')) as JSONSchema7;
+      jsons.push(json);
     } catch {
       logging(
         LOGTYPE.ERROR,
@@ -738,21 +803,57 @@ const fileListInsert = async (
       );
       continue;
     }
+  }
 
+  // jsonファイルを並び替える
+  jsons
+    // 文字列の短い順(よりパスの短い順)に整列
+    .sort(function (a, b) {
+      // $ID順で並び替え
+      if (a.$id && b.$id) {
+        if (a.$id !== b.$id) {
+          if (a.$id > b.$id) return 1;
+          if (a.$id < b.$id) return -1;
+        }
+      }
+
+      // バージョンの比較
+      const versionOfA = a['jesgo:version'];
+      const versionOfB = b['jesgo:version'];
+      if (versionOfA && versionOfB) {
+        // メジャーバージョン順で並び替え
+        if (
+          Number(versionOfA.split('.')[0]) !== Number(versionOfB.split('.')[0])
+        ) {
+          return (
+            Number(versionOfA.split('.')[0]) - Number(versionOfB.split('.')[0])
+          );
+        }
+        // マイナーーバージョン順で並び替え
+        if (
+          Number(versionOfA.split('.')[1]) !== Number(versionOfB.split('.')[1])
+        ) {
+          return (
+            Number(versionOfA.split('.')[1]) - Number(versionOfB.split('.')[1])
+          );
+        }
+      }
+
+      return 0;
+    });
+
+  for (let i = 0; i < jsons.length; i++) {
     // Insert用IDを含む旧データの取得
-    const oldJsonData = await getOldSchema(json.$id as string);
+    const oldJsonData = await getOldSchema(jsons[i].$id as string);
 
     const [query, values, subqueryValues] = makeInsertQuery(
       oldJsonData,
-      json,
+      jsons[i],
       fileList[i],
       errorMessages
     );
     if (query !== '') {
-      await dbAccess.query(
-        query,
-        values
-      );
+      await dbAccess.query(query, values);
       if (subqueryValues[0] !== '') {
         // 旧スキーマの有効期限更新がある場合そちらも行う
         await dbAccess.query(
@@ -769,7 +870,7 @@ const fileListInsert = async (
 /**
  * DBに登録されているスキーマのsubschema, childschema情報をアップデートする
  */
-export const schemaListUpdate = async (errorMessages: string[]) => {
+export const schemaListUpdate = async () => {
   logging(LOGTYPE.DEBUG, `呼び出し`, 'JsonToDatabase', 'schemaListUpdate');
 
   // 先に「子スキーマから指定した親スキーマの関係リスト」を逆にしたものを作成しておく
@@ -1151,7 +1252,7 @@ export const jsonToSchema = async (): Promise<ApiReturnObject> => {
 
     await fileListInsert(fileList, []);
 
-    await schemaListUpdate([]);
+    await schemaListUpdate();
 
     await dbAccess.query('COMMIT');
     return { statusNum: RESULT.NORMAL_TERMINATION, body: null };
@@ -1237,7 +1338,7 @@ export const uploadZipFile = async (data: any): Promise<ApiReturnObject> => {
 
     // スキーマが1件以上新規登録、更新された場合のみ関係性のアップデートを行う
     if (updateNum > 0) {
-      await schemaListUpdate(errorMessages);
+      await schemaListUpdate();
     }
 
     return {
