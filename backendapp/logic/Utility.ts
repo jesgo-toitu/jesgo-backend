@@ -1,6 +1,7 @@
 import { formatDateStr } from '../services/JsonToDatabase';
 import { logging, LOGTYPE } from './Logger';
 import crypto from 'crypto';
+import { ParseStream } from 'unzipper';
 
 export interface Obj {
   [prop: string]: any;
@@ -45,6 +46,44 @@ export const isAgoYearFromNow = (date: Date, year: number): boolean => {
   return compareDay > year * 365;
 };
 
+// 日付(Date形式)をyyyy/MM/ddなどの形式に変換
+export const formatDate = (dateObj: Date, separator = '') => {
+  try {
+    const y = dateObj.getFullYear();
+    const m = `00${dateObj.getMonth() + 1}`.slice(-2);
+    const d = `00${dateObj.getDate()}`.slice(-2);
+    return `${y}${separator}${m}${separator}${d}`;
+  } catch {
+    return '';
+  }
+};
+
+// 時刻(Date形式)をHH:mm:ssの形式に変換
+export const formatTime = (dateObj: Date, separator = '') => {
+  try {
+    const h = `00${dateObj.getHours()}`.slice(-2);
+    const m = `00${dateObj.getMinutes()}`.slice(-2);
+    const s = `00${dateObj.getSeconds()}`.slice(-2);
+    return `${h}${separator}${m}${separator}${s}`;
+  } catch {
+    return '';
+  }
+};
+
+/**
+ * 一時展開用のディレクトリパスを削除したファイルパスを返す
+ * もともと一時展開用のディレクトリパスが付いていなければファイルパスをそのまま返す
+ * @param tempPath 一時展開用のディレクトリパス
+ * @param filePath ファイルパス
+ * @returns 一時展開用のディレクトリパスを削除したファイルパス
+ */
+export const cutTempPath = (tempPath: string, filePath: string): string => {
+  if (filePath.startsWith(tempPath)) {
+    return filePath.slice(tempPath.length);
+  }
+  return filePath;
+};
+
 // 患者特定ハッシュ値生成
 export const GetPatientHash = (birthday: Date | string, his_id: string) => {
   let birthdayStr = '';
@@ -59,6 +98,16 @@ export const GetPatientHash = (birthday: Date | string, his_id: string) => {
     .digest('hex');
 };
 
+export const streamPromise = async (stream: ParseStream) => {
+  return new Promise((resolve, reject) => {
+    stream.on('close', () => {
+      resolve('close');
+    });
+    stream.on('error', (error) => {
+      reject(error);
+    });
+  });
+};
 // 日付文字列判定
 export const isDateStr = (dateStr: string) =>
   !Number.isNaN(new Date(dateStr).getTime());
