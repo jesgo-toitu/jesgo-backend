@@ -37,7 +37,7 @@ import {
 import { getSettings, settings, updateSettings } from '../services/Settings';
 import { ApiReturnObject, getToken, RESULT } from '../logic/ApiCommon';
 import { logging, LOGTYPE } from '../logic/Logger';
-import { deletePlugin, getPackagedDocument, getPluginList, PackageDocumentRequest, uploadPluginZipFile } from '../services/Plugin';
+import { deletePlugin, getPackagedDocument, getPluginList, PackageDocumentRequest, updatePluginExecute, uploadPluginZipFile } from '../services/Plugin';
 
 const app = express();
 app.use(helmet());
@@ -755,7 +755,41 @@ router.post('/deletePlugin/', async (req, res, next) => {
       LOGTYPE.ERROR,
       '権限エラー',
       'router',
-      '/upload-plugin',
+      '/deletePlugin',
+      getUsernameFromRequest(req)
+    );
+  }
+});
+
+router.post('/plugin-update/', async (req, res, next) => {
+  logging(
+    LOGTYPE.DEBUG,
+    '呼び出し',
+    'router',
+    '/plugin-update',
+    getUsernameFromRequest(req)
+  );
+  // 権限の確認
+  const authResult: ApiReturnObject = await checkAuth(
+    getToken(req),
+    roll.pluginUpdate
+  );
+  if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
+    res.status(200).send(authResult);
+  }
+  if (authResult.body) {
+    // eslint-disable-next-line
+    updatePluginExecute(req.body.data)
+    .then((result) => res.status(200).send(result))
+    .catch(next);
+  }
+  // 権限が無い場合
+  else {
+    logging(
+      LOGTYPE.ERROR,
+      '権限エラー',
+      'router',
+      '/plugin-update',
       getUsernameFromRequest(req)
     );
   }

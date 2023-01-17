@@ -815,3 +815,73 @@ export const deletePlugin = async (pluginId:number) => {
   }
   return { statusNum: result, body: null };
 }
+
+type UpdateTarget = {
+  hash?:string;
+  case_no?:string;
+  target:Record<string, string|number>;
+}
+
+type UpdateObject = {
+  targetSchema?:number[];
+  updateTarget?:UpdateTarget|UpdateTarget[];
+}
+export const updatePluginExecute = async (updateObjects:UpdateObject) => {
+  logging(LOGTYPE.DEBUG, '呼び出し', 'Plugin', 'updatePluginExecute');
+
+
+  console.log(updateObjects);
+  if(!updateObjects.updateTarget){
+    return { statusNum: RESULT.ABNORMAL_TERMINATION, body: null }; 
+  }
+  const dbAccess = new DbAccess();
+  await dbAccess.connectWithConf();
+
+  const localUpdateTargets = Array.isArray(updateObjects.updateTarget) ? updateObjects.updateTarget : [updateObjects.updateTarget];
+
+  for (let index = 0; index < localUpdateTargets.length; index++) {
+    const obj = localUpdateTargets[index];
+    if(lodash.has(obj, 'hash')){
+      // 更新対象はhashにする
+      console.log(obj.hash)
+    } else if(lodash.has(obj, 'case_no')){
+      // 更新対象は腫瘍登録番号とする
+      console.log(obj.case_no)
+    } else {
+      // 更新対象無し
+      return { statusNum: RESULT.ABNORMAL_TERMINATION, body: null };
+    }
+
+    for(const key in obj.target) {
+      const spreadedKey = key.split("/").filter(Boolean);
+      let searchKey = "document_schema";
+      for (let i = 0; i < spreadedKey.length; i++) {
+        const name = spreadedKey[i];
+        searchKey += "->'properties'->";
+        if((i+1) === spreadedKey.length){
+          searchKey += ">";
+        }
+        searchKey += `'${name}'`
+      }
+
+      console.log(searchKey);
+    }
+
+    
+    
+  }
+  let result = RESULT.NORMAL_TERMINATION;
+  /*
+  const ret = await dbAccess.query(
+    'UPDATE jesgo_plugin SET deleted = true WHERE plugin_id = $1',
+    [pluginId]
+  );
+  await dbAccess.end();
+  if (ret) {
+    logging(LOGTYPE.INFO, `delete success plugin_id: ${pluginId}`, 'Plugin', 'deletePlugin');
+  } else {
+    result = RESULT.ABNORMAL_TERMINATION;
+  }
+  */
+  return { statusNum: result, body: null };
+}
