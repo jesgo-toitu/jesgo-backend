@@ -1,5 +1,6 @@
 import { DbAccess } from '../logic/DbAccess';
 import {
+  Const,
   cutTempPath,
   formatDate,
   formatTime,
@@ -9,7 +10,7 @@ import {
 } from '../logic/Utility';
 import { ApiReturnObject, RESULT } from '../logic/ApiCommon';
 import { jesgoCaseDefine } from './Schemas';
-import lodash from 'lodash';
+import lodash, { update } from 'lodash';
 import { logging, LOGTYPE } from '../logic/Logger';
 import { readdirSync, rename } from 'fs';
 import * as fs from 'fs';
@@ -18,6 +19,8 @@ import * as path from 'path';
 import UUID from 'uuidjs';
 import { Extract } from 'unzipper';
 import pathModule from 'path';
+import { JSONSchema7 } from './JsonToDatabase';
+import { getPropertyNameFromTag } from './SearchPatient';
 
 export interface PackageDocumentRequest {
   jesgoCaseList: jesgoCaseDefine[];
@@ -799,24 +802,30 @@ export const deletePlugin = async (pluginId:number) => {
   logging(LOGTYPE.DEBUG, '呼び出し', 'Plugin', 'deletePlugin');
 
   const dbAccess = new DbAccess();
-  await dbAccess.connectWithConf();
+  try{
+    await dbAccess.connectWithConf();
 
-  let result = RESULT.NORMAL_TERMINATION;
-
-  const ret = await dbAccess.query(
-    'UPDATE jesgo_plugin SET deleted = true WHERE plugin_id = $1',
-    [pluginId]
-  );
-  await dbAccess.end();
-  if (ret) {
-    logging(LOGTYPE.INFO, `delete success plugin_id: ${pluginId}`, 'Plugin', 'deletePlugin');
-  } else {
-    result = RESULT.ABNORMAL_TERMINATION;
+    let result = RESULT.NORMAL_TERMINATION;
+  
+    const ret = await dbAccess.query(
+      'UPDATE jesgo_plugin SET deleted = true WHERE plugin_id = $1',
+      [pluginId]
+    );
+    
+    if (ret) {
+      logging(LOGTYPE.INFO, `delete success plugin_id: ${pluginId}`, 'Plugin', 'deletePlugin');
+    } else {
+      result = RESULT.ABNORMAL_TERMINATION;
+    }
+    return { statusNum: result, body: null };
+  } finally {
+    await dbAccess.end();
   }
-  return { statusNum: result, body: null };
+
 }
 
 type UpdateTarget = {
+  case_id?:number;
   hash?:string;
   case_no?:string;
   target:Record<string, string|number>;
@@ -829,59 +838,142 @@ type UpdateObject = {
 export const updatePluginExecute = async (updateObjects:UpdateObject) => {
   logging(LOGTYPE.DEBUG, '呼び出し', 'Plugin', 'updatePluginExecute');
 
-
-  console.log(updateObjects);
   if(!updateObjects.updateTarget){
     return { statusNum: RESULT.ABNORMAL_TERMINATION, body: null }; 
   }
   const dbAccess = new DbAccess();
-  await dbAccess.connectWithConf();
+  try
+  {
+    await dbAccess.connectWithConf();
 
-  const localUpdateTargets = Array.isArray(updateObjects.updateTarget) ? updateObjects.updateTarget : [updateObjects.updateTarget];
-
-  for (let index = 0; index < localUpdateTargets.length; index++) {
-    const obj = localUpdateTargets[index];
-    if(lodash.has(obj, 'hash')){
-      // 更新対象はhashにする
-      console.log(obj.hash)
-    } else if(lodash.has(obj, 'case_no')){
-      // 更新対象は腫瘍登録番号とする
-      console.log(obj.case_no)
-    } else {
-      // 更新対象無し
-      return { statusNum: RESULT.ABNORMAL_TERMINATION, body: null };
-    }
-
-    for(const key in obj.target) {
-      const spreadedKey = key.split("/").filter(Boolean);
-      let searchKey = "document_schema";
-      for (let i = 0; i < spreadedKey.length; i++) {
-        const name = spreadedKey[i];
-        searchKey += "->'properties'->";
-        if((i+1) === spreadedKey.length){
-          searchKey += ">";
+    const localUpdateTargets = Array.isArray(updateObjects.updateTarget) ? updateObjects.updateTarget : [updateObjects.updateTarget];
+    let patientHashList:{caseId:number, hash:string}[]|undefined;
+    let patientCaseNoList:{caseId:number, case_no:string}[]|undefined;
+    for (let index = 0; index < localUpdateTargets.length; index++) {
+      const obj = localUpdateTargets[index];
+      let targetId:number;    
+      if(obj.case_id){
+        // 更新対象はcase_idにする
+        console.log("haveCaseId")
+        targetId = obj.case_id;
+      } else if(obj.hash){
+        // 更新対象はhashにする
+        if(!patientHashList){
+          const ret = await dbAccess.query("SELECT case_id, date_of_birth, his_id FROM jesgo_case WHERE deleted = false",[]) as {case_id:number, date_of_birth:Date, his_id:string}[];
+          patientHashList = [];
+          for (let index = 0; index < ret.length; index++) {
+            const patient = ret[index];
+            const patientHashObj = {caseId:patient.case_id, hash:GetPatientHash(patient.date_of_birth, patient.his_id)};
+            patientHashList.push(patientHashObj);
+          }
         }
-        searchKey += `'${name}'`
+        targetId = patientHashList.find(p => p.hash === obj.hash)?.caseId ?? -1;
+      } else if(obj.case_no){
+        // 更新対象は腫瘍登録番号とする
+        if(!patientCaseNoList){
+          const ret = await dbAccess.query(
+            `SELECT case_id, document, document_schema FROM jesgo_document d 
+            INNER JOIN
+            jesgo_document_schema s ON d.schema_primary_id = s.schema_primary_id
+            WHERE d.deleted = false AND 
+            d.schema_id IN 
+            (
+              SELECT schema_id FROM jesgo_document_schema 
+              WHERE document_schema::text like '%"jesgo:tag":"registration_number"%'
+            )`,[]) as {case_id:number, document:JSON, document_schema:JSONSchema7}[];
+          patientCaseNoList = [];
+          for (let index = 0; index < ret.length; index++) {
+            const patient = ret[index];
+            const registrability =
+            getPropertyNameFromTag(
+              Const.JESGO_TAG.REGISTRABILITY,
+              patient.document,
+              patient.document_schema
+            ) ?? '';
+            if (registrability && registrability === 'はい') {
+              const registrationNumber =
+              getPropertyNameFromTag(
+                Const.JESGO_TAG.REGISTRATION_NUMBER,
+                patient.document,
+                patient.document_schema
+              ) ?? '';
+              if(registrationNumber){
+                const patientCaseNoObj = {caseId:patient.case_id, case_no:registrationNumber }
+                patientCaseNoList.push(patientCaseNoObj);
+              }
+            }
+          }
+        }
+        targetId = patientCaseNoList.find(p => p.case_no === obj.case_no)?.caseId ?? -1;
+      } else {
+        // 更新対象指定無し
+        continue;
       }
 
-      console.log(searchKey);
+      for(const key in obj.target) {
+        const spreadedKey = key.split("/").filter(Boolean);
+        let searchKey = "document_schema";
+        let updateKey = "document"
+        for (let i = 0; i < spreadedKey.length; i++) {
+          searchKey += "->'properties'->";
+          if((i+1) === spreadedKey.length){
+            searchKey += ">";
+          }
+          searchKey += `$${i+1}`;
+          updateKey += `[$${i+1}]`;
+        }
+
+        const ret = await dbAccess.query(
+          `SELECT array_agg(schema_id) as schema_ids FROM jesgo_document_schema WHERE ${searchKey} LIKE '%%'`,
+          spreadedKey
+        ) as {schema_ids:number[]}[];
+        const schemaIds = ret[0].schema_ids;
+        if(schemaIds && schemaIds.length){
+          let args:any[] = [];
+          args = args.concat(spreadedKey);
+          args.push(`"${obj.target[key]}"`);
+          args.push(lodash.uniq(schemaIds));
+          args.push(targetId);
+
+          let phIndex = spreadedKey.length;
+          let updateQuery = `UPDATE jesgo_document SET ${updateKey} = $${++phIndex} WHERE schema_id = any($${++phIndex}) AND deleted = false AND case_id = $${++phIndex}`;
+          if(updateObjects.targetSchema && updateObjects.targetSchema.length > 0){
+            updateQuery += ` AND schema_id = any($${++phIndex})`;
+            args.push(updateObjects.targetSchema);
+          }
+
+          if(phIndex === args.length){
+            try{
+              console.log(updateQuery);
+              console.log(args)
+              await dbAccess.query(updateQuery, args);
+
+            }catch(e){
+              console.error(e);
+            }
+
+          }
+        }
+      }
     }
 
-    
-    
+    let result = RESULT.NORMAL_TERMINATION;
+    /*
+    const ret = await dbAccess.query(
+      'UPDATE jesgo_plugin SET deleted = true WHERE plugin_id = $1',
+      [pluginId]
+    );
+    await dbAccess.end();
+    if (ret) {
+      logging(LOGTYPE.INFO, `delete success plugin_id: ${pluginId}`, 'Plugin', 'deletePlugin');
+    } else {
+      result = RESULT.ABNORMAL_TERMINATION;
+    }
+    */
+    return { statusNum: result, body: null };
+  } catch(e){
+    console.error(e);
+  } finally {
+    await dbAccess.end();
   }
-  let result = RESULT.NORMAL_TERMINATION;
-  /*
-  const ret = await dbAccess.query(
-    'UPDATE jesgo_plugin SET deleted = true WHERE plugin_id = $1',
-    [pluginId]
-  );
-  await dbAccess.end();
-  if (ret) {
-    logging(LOGTYPE.INFO, `delete success plugin_id: ${pluginId}`, 'Plugin', 'deletePlugin');
-  } else {
-    result = RESULT.ABNORMAL_TERMINATION;
-  }
-  */
-  return { statusNum: result, body: null };
 }

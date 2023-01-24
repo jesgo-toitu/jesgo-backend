@@ -126,7 +126,7 @@ const addStatus = (
  */
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const getPropertyNameFromTag = (
+export const getPropertyNameFromTag = (
   tagName: string,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   document: any,
