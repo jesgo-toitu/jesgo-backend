@@ -100,6 +100,9 @@ export interface localStorageObject {
   is_add_roll: boolean;
   is_edit_roll: boolean;
   is_remove_roll: boolean;
+  is_plugin_registerable: boolean;
+  is_plugin_executable_select: boolean;
+  is_plugin_executable_update: boolean;
   is_data_manage_roll: boolean;
   is_system_manage_roll: boolean;
 }
@@ -111,6 +114,9 @@ interface rollAuth {
   remove: boolean;
   data_manage: boolean;
   system_manage: boolean;
+  plugin_registerable: boolean;
+  plugin_executable_select: boolean;
+  plugin_executable_update: boolean;
 }
 
 export interface userObject extends dispUser {
@@ -125,6 +131,9 @@ export const roll = {
   remove: 'remove',
   dataManage: 'data_manage',
   systemManage: 'system_manage',
+  pluginRegisterable: 'plugin_registerable',
+  pluginSelect: 'plugin_executable_select',
+  pluginUpdate: 'plugin_executable_update',
 };
 
 /**
@@ -502,7 +511,7 @@ export const getUsernameFromRequest = (req: any) => {
  **/
 export const checkAuth = async (
   token: string | undefined,
-  targetAuth: string
+  targetAuth: string | string[]
 ): Promise<ApiReturnObject> => {
   logging(LOGTYPE.DEBUG, '呼び出し', 'Users', 'checkAuth');
   try {
@@ -527,17 +536,38 @@ export const checkAuth = async (
     const user: dispUser = myApiReturnObject.body as dispUser;
     const dbAccess = new DbAccess();
     await dbAccess.connectWithConf();
+
+    const authList: string[] = [];
+    if (Array.isArray(targetAuth)) {
+      targetAuth = authList;
+    } else {
+      authList.push(targetAuth);
+    }
+
+    let authSql = '';
+    for (let i = 0; i < authList.length; i += 1) {
+      authSql += `${authList[i]} as auth${i}`;
+      if (i < authList.length - 1) {
+        authSql += ',';
+      }
+    }
+
     const ret = (await dbAccess.query(
-      `SELECT ${targetAuth} AS auth FROM jesgo_user u JOIN jesgo_user_roll r ON u.roll_id = r.roll_id WHERE user_id = $1`,
+      `SELECT ${authSql} FROM jesgo_user u JOIN jesgo_user_roll r ON u.roll_id = r.roll_id WHERE user_id = $1`,
       [user.user_id]
-    )) as { auth: boolean }[];
+    )) as object[];
     await dbAccess.end();
 
     if (ret.length > 0) {
       // レコードがあればその結果を返却する
-      myApiReturnObject.body = ret[0].auth;
+
+      // 権限が複数指定されていた場合はいずれかの権限がTrueの場合に権限ありとみなす
+      const auth = Object.entries(ret[0]).some((auth) => auth[1] === true);
+
+      myApiReturnObject.body = auth;
+      myApiReturnObject.userId = user.user_id; // user_idも返す
       // 認証がfalseであればstatusを変更する
-      if(myApiReturnObject.body === false){
+      if (myApiReturnObject.body === false) {
         myApiReturnObject.statusNum = RESULT.ABNORMAL_TERMINATION;
       }
     } else {
@@ -577,7 +607,7 @@ export const loginUser = async (
     };
   }
   const roll = (await dbAccess.query(
-    'SELECT view, add, edit, remove, data_manage, system_manage FROM jesgo_user_roll WHERE roll_id = $1',
+    'SELECT view, add, edit, remove, plugin_registerable, plugin_executable_select, plugin_executable_update, data_manage, system_manage FROM jesgo_user_roll WHERE roll_id = $1',
     [ret[0].roll_id]
   )) as rollAuth[];
   await dbAccess.end();
@@ -593,6 +623,9 @@ export const loginUser = async (
       is_add_roll: roll[0].add,
       is_edit_roll: roll[0].edit,
       is_remove_roll: roll[0].remove,
+      is_plugin_registerable: roll[0].plugin_registerable,
+      is_plugin_executable_select: roll[0].plugin_executable_select,
+      is_plugin_executable_update: roll[0].plugin_executable_update,
       is_data_manage_roll: roll[0].data_manage,
       is_system_manage_roll: roll[0].system_manage,
     };

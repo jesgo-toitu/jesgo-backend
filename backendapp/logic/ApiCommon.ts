@@ -4,6 +4,7 @@
 export interface ApiReturnObject {
   statusNum: number;
   body: unknown;
+  userId?: number;
 }
 
 export const RESULT = {

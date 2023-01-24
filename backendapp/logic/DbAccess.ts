@@ -49,9 +49,25 @@ export class DbAccess {
    * @returns {Promise<unknown>}
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  public async query(query: string, parameters: any[] = []): Promise<unknown> {
+  public async query(
+    query: string,
+    parameters: any[] = [],
+    queryType: 'update' | 'select' = 'select'
+  ): Promise<unknown> {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-    return (await this.client.query(query, parameters)).rows;
+    const result = await this.client.query(query, parameters);
+
+    // updateの場合は更新された行数を返す。selectはselect結果
+    return queryType === 'update' ? result.rowCount : result.rows;
+  }
+
+  /**
+   * ロールバック
+   * @returns 
+   */
+  public async rollback() {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+    return await this.client.query('ROLLBACK');
   }
 
   /**
