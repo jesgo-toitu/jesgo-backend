@@ -7,7 +7,16 @@ import { Extract } from 'unzipper';
 import * as fs from 'fs';
 import fse from 'fs-extra';
 import * as path from 'path';
-import { Const, cutTempPath, isDateStr, escapeText, formatDate, formatTime, jesgo_tagging, streamPromise } from '../logic/Utility';
+import {
+  Const,
+  cutTempPath,
+  isDateStr,
+  escapeText,
+  formatDate,
+  formatTime,
+  jesgo_tagging,
+  streamPromise,
+} from '../logic/Utility';
 
 // 定数
 // 一時展開用パス
@@ -335,6 +344,7 @@ const getOldSchema = async (stringId: string): Promise<oldSchema[]> => {
     for (let i = 0; i < ret.length; i += 1) {
       ret[i].valid_from = new Date(ret[i].valid_from.getTime() - offset);
       if (ret[i].valid_until) {
+        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
         ret[i].valid_until = new Date(ret[i].valid_until!.getTime() - offset);
       }
     }
@@ -426,6 +436,7 @@ const makeInsertQuery = (
   let errorFlag = false;
 
   const latestSchemaInfo = schemaInfoList[0]; // 有効フラグ関係なく現在の最新スキーマ(バージョンチェック用)
+  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
   const validSchemaInfo = schemaInfoList.find((p) => !p.hidden)!; // 有効な現在の最新スキーマ
 
   let subQuery = ['', ''];

@@ -37,7 +37,14 @@ import {
 import { getSettings, settings, updateSettings } from '../services/Settings';
 import { ApiReturnObject, getToken, RESULT } from '../logic/ApiCommon';
 import { logging, LOGTYPE } from '../logic/Logger';
-import { deletePlugin, getPackagedDocument, getPluginList, PackageDocumentRequest, updatePluginExecute, uploadPluginZipFile } from '../services/Plugin';
+import {
+  deletePlugin,
+  getPackagedDocument,
+  getPluginList,
+  PackageDocumentRequest,
+  updatePluginExecute,
+  uploadPluginZipFile,
+} from '../services/Plugin';
 
 const app = express();
 app.use(helmet());
@@ -145,7 +152,10 @@ router.get('/userlist', async (req, res, next) => {
     getUsernameFromRequest(req)
   );
   // 権限の確認
-  const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.systemManage);
+  const authResult: ApiReturnObject = await checkAuth(
+    getToken(req),
+    roll.systemManage
+  );
   if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
     res.status(200).send(authResult);
   } else {
@@ -180,7 +190,10 @@ router.post('/signup/', async (req, res, next) => {
   );
 
   // 権限の確認
-  const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.systemManage);
+  const authResult: ApiReturnObject = await checkAuth(
+    getToken(req),
+    roll.systemManage
+  );
   if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
     res.status(200).send(authResult);
   } else {
@@ -205,7 +218,10 @@ router.post('/deleteUser/', async (req, res, next) => {
   );
 
   // 権限の確認
-  const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.systemManage);
+  const authResult: ApiReturnObject = await checkAuth(
+    getToken(req),
+    roll.systemManage
+  );
   if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
     res.status(200).send(authResult);
   } else {
@@ -255,7 +271,10 @@ router.post('/editUser/', async (req, res, next) => {
   );
 
   // 権限の確認
-  const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.systemManage);
+  const authResult: ApiReturnObject = await checkAuth(
+    getToken(req),
+    roll.systemManage
+  );
   if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
     res.status(200).send(authResult);
   } else {
@@ -692,39 +711,43 @@ router.get('/plugin-list/', async (req, res, next) => {
 });
 
 // eslint-disable-next-line
-router.post('/upload-plugin/', upload.single('files'), async (req, res, next) => {
-  logging(
-    LOGTYPE.DEBUG,
-    '呼び出し',
-    'router',
-    '/upload-plugin',
-    getUsernameFromRequest(req)
-  );
-  // 権限の確認
-  const authResult: ApiReturnObject = await checkAuth(
-    getToken(req),
-    roll.systemManage
-  );
-  if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
-    res.status(200).send(authResult);
-  }
-  if (authResult.body) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    uploadPluginZipFile(req.file, authResult.userId)
-      .then((result) => res.status(200).send(result))
-      .catch(next);
-  }
-  // 権限が無い場合
-  else {
+router.post(
+  '/upload-plugin/',
+  upload.single('files'),
+  async (req, res, next) => {
     logging(
-      LOGTYPE.ERROR,
-      '権限エラー',
+      LOGTYPE.DEBUG,
+      '呼び出し',
       'router',
       '/upload-plugin',
       getUsernameFromRequest(req)
     );
+    // 権限の確認
+    const authResult: ApiReturnObject = await checkAuth(
+      getToken(req),
+      roll.systemManage
+    );
+    if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
+      res.status(200).send(authResult);
+    }
+    if (authResult.body) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      uploadPluginZipFile(req.file, authResult.userId)
+        .then((result) => res.status(200).send(result))
+        .catch(next);
+    }
+    // 権限が無い場合
+    else {
+      logging(
+        LOGTYPE.ERROR,
+        '権限エラー',
+        'router',
+        '/upload-plugin',
+        getUsernameFromRequest(req)
+      );
+    }
   }
-});
+);
 
 router.post('/deletePlugin/', async (req, res, next) => {
   logging(
@@ -744,10 +767,12 @@ router.post('/deletePlugin/', async (req, res, next) => {
   }
   if (authResult.body) {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    const body:{data:{plugin_id:number}} = req.body as {data:{plugin_id:number}};
+    const body: { data: { plugin_id: number } } = req.body as {
+      data: { plugin_id: number };
+    };
     deletePlugin(body.data.plugin_id)
-    .then((result) => res.status(200).send(result))
-    .catch(next);
+      .then((result) => res.status(200).send(result))
+      .catch(next);
   }
   // 権限が無い場合
   else {
@@ -780,8 +805,8 @@ router.post('/plugin-update/', async (req, res, next) => {
   if (authResult.body) {
     // eslint-disable-next-line
     updatePluginExecute(req.body.data)
-    .then((result) => res.status(200).send(result))
-    .catch(next);
+      .then((result) => res.status(200).send(result))
+      .catch(next);
   }
   // 権限が無い場合
   else {
