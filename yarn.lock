@@ -1852,6 +1852,11 @@ eslint@^8.10.0:
     text-table "^0.2.0"
     v8-compile-cache "^2.0.3"
 
+esm@^3.2.25:
+  version "3.2.25"
+  resolved "https://registry.yarnpkg.com/esm/-/esm-3.2.25.tgz#342c18c29d56157688ba5ce31f8431fbb795cc10"
+  integrity sha512-U1suiZ2oDVWv4zPO56S0NcR5QriEahGtdN2OR6FiOG4WJvcjBVFB0qI4+eKoWFH483PKGuLuu6V8Z4T5g63UVA==
+
 espree@^9.3.1:
   version "9.3.1"
   resolved "https://registry.npmjs.org/espree/-/espree-9.3.1.tgz"
@@ -4628,6 +4633,11 @@ utils-merge@1.0.1:
   version "1.0.1"
   resolved "https://registry.npmjs.org/utils-merge/-/utils-merge-1.0.1.tgz"
   integrity sha1-n5VxD1CiZ5R7LMwSR0HBAoQn5xM=
+
+uuidjs@^4.2.12:
+  version "4.2.13"
+  resolved "https://registry.yarnpkg.com/uuidjs/-/uuidjs-4.2.13.tgz#84a71b93cd5a713bb9a33c498d6a2ba1ee6ddc66"
+  integrity sha512-at5lwiJ7pvO+mBy/qZU1IUKzZzVoN2hRHu0FGrmasLG/vQQIcaqbvP+JJshHeEi0mqmfz68Ugqlgvz7QkLdsqg==
 
 v8-compile-cache@^2.0.3:
   version "2.3.0"
