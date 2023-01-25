@@ -37,7 +37,13 @@ import {
 import { getSettings, settings, updateSettings } from '../services/Settings';
 import { ApiReturnObject, getToken, RESULT } from '../logic/ApiCommon';
 import { logging, LOGTYPE } from '../logic/Logger';
-import { deletePlugin, getPackagedDocument, getPluginList, PackageDocumentRequest, uploadPluginZipFile } from '../services/Plugin';
+import {
+  deletePlugin,
+  getPackagedDocument,
+  getPluginList,
+  PackageDocumentRequest,
+  uploadPluginZipFile,
+} from '../services/Plugin';
 
 const app = express();
 app.use(helmet());
@@ -83,7 +89,10 @@ router.get('/getJsonSchema', async (req, res, next) => {
     getUsernameFromRequest(req)
   );
   // 権限の確認
-  const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.view);
+  const authResult: ApiReturnObject = await checkAuth(getToken(req), [
+    roll.login,
+    roll.view,
+  ]);
   if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
     res.status(200).send(authResult);
   }
@@ -113,7 +122,10 @@ router.get('/getRootSchemaIds', async (req, res, next) => {
     getUsernameFromRequest(req)
   );
   // 権限の確認
-  const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.view);
+  const authResult: ApiReturnObject = await checkAuth(getToken(req), [
+    roll.login,
+    roll.view,
+  ]);
   if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
     res.status(200).send(authResult);
   }
@@ -145,7 +157,10 @@ router.get('/userlist', async (req, res, next) => {
     getUsernameFromRequest(req)
   );
   // 権限の確認
-  const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.systemManage);
+  const authResult: ApiReturnObject = await checkAuth(
+    getToken(req),
+    roll.systemManage
+  );
   if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
     res.status(200).send(authResult);
   } else {
@@ -180,7 +195,10 @@ router.post('/signup/', async (req, res, next) => {
   );
 
   // 権限の確認
-  const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.systemManage);
+  const authResult: ApiReturnObject = await checkAuth(
+    getToken(req),
+    roll.systemManage
+  );
   if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
     res.status(200).send(authResult);
   } else {
@@ -205,7 +223,10 @@ router.post('/deleteUser/', async (req, res, next) => {
   );
 
   // 権限の確認
-  const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.systemManage);
+  const authResult: ApiReturnObject = await checkAuth(
+    getToken(req),
+    roll.systemManage
+  );
   if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
     res.status(200).send(authResult);
   } else {
@@ -230,7 +251,10 @@ router.post('/changeUserPassword/', async (req, res, next) => {
   );
 
   // 権限の確認
-  const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.view);
+  const authResult: ApiReturnObject = await checkAuth(getToken(req), [
+    roll.login,
+    roll.view,
+  ]);
   if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
     res.status(200).send(authResult);
   } else {
@@ -255,7 +279,10 @@ router.post('/editUser/', async (req, res, next) => {
   );
 
   // 権限の確認
-  const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.systemManage);
+  const authResult: ApiReturnObject = await checkAuth(
+    getToken(req),
+    roll.systemManage
+  );
   if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
     res.status(200).send(authResult);
   } else {
@@ -300,7 +327,10 @@ router.get('/patientlist', async (req, res, next) => {
     getUsernameFromRequest(req)
   );
   // 権限の確認
-  const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.view);
+  const authResult: ApiReturnObject = await checkAuth(
+    getToken(req),
+    roll.login
+  );
   if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
     res.status(200).send(authResult);
   } else {
@@ -374,7 +404,7 @@ router.post('/registrationCaseAndDocument/', async (req, res, next) => {
     getUsernameFromRequest(req)
   );
   // 権限の確認
-  const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.add);
+  const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.edit);
   if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
     res.status(200).send(authResult);
   }
@@ -436,10 +466,10 @@ router.get('/getblacklist/', async (req, res, next) => {
     getUsernameFromRequest(req)
   );
   // 権限の確認
-  const authResult: ApiReturnObject = await checkAuth(
-    getToken(req),
-    roll.systemManage
-  );
+  const authResult: ApiReturnObject = await checkAuth(getToken(req), [
+    roll.login,
+    roll.view,
+  ]);
   if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
     res.status(200).send(authResult);
   }
@@ -517,6 +547,7 @@ router.post('/updateSettings/', async (req, res, next) => {
  * プラグイン用 start
  */
 // eslint-disable-next-line
+// スキーマアップロード
 router.post('/upload/', upload.single('files'), async (req, res, next) => {
   logging(
     LOGTYPE.DEBUG,
@@ -629,10 +660,10 @@ router.post('/packaged-document/', async (req, res, next) => {
     getUsernameFromRequest(req)
   );
   // 権限の確認
-  const authResult: ApiReturnObject = await checkAuth(
-    getToken(req),
-    roll.systemManage
-  );
+  const authResult: ApiReturnObject = await checkAuth(getToken(req), [
+    roll.pluginSelect,
+    roll.pluginUpdate,
+  ]);
   if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
     res.status(200).send(authResult);
   }
@@ -668,7 +699,7 @@ router.get('/plugin-list/', async (req, res, next) => {
   // 権限の確認
   const authResult: ApiReturnObject = await checkAuth(
     getToken(req),
-    roll.pluginRegisterable
+    roll.login
   );
   if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
     res.status(200).send(authResult);
@@ -692,39 +723,43 @@ router.get('/plugin-list/', async (req, res, next) => {
 });
 
 // eslint-disable-next-line
-router.post('/upload-plugin/', upload.single('files'), async (req, res, next) => {
-  logging(
-    LOGTYPE.DEBUG,
-    '呼び出し',
-    'router',
-    '/upload-plugin',
-    getUsernameFromRequest(req)
-  );
-  // 権限の確認
-  const authResult: ApiReturnObject = await checkAuth(
-    getToken(req),
-    roll.systemManage
-  );
-  if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
-    res.status(200).send(authResult);
-  }
-  if (authResult.body) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    uploadPluginZipFile(req.file, authResult.userId)
-      .then((result) => res.status(200).send(result))
-      .catch(next);
-  }
-  // 権限が無い場合
-  else {
+router.post(
+  '/upload-plugin/',
+  upload.single('files'),
+  async (req, res, next) => {
     logging(
-      LOGTYPE.ERROR,
-      '権限エラー',
+      LOGTYPE.DEBUG,
+      '呼び出し',
       'router',
       '/upload-plugin',
       getUsernameFromRequest(req)
     );
+    // 権限の確認
+    const authResult: ApiReturnObject = await checkAuth(
+      getToken(req),
+      roll.pluginRegisterable
+    );
+    if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
+      res.status(200).send(authResult);
+    }
+    if (authResult.body) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      uploadPluginZipFile(req.file, authResult.userId)
+        .then((result) => res.status(200).send(result))
+        .catch(next);
+    }
+    // 権限が無い場合
+    else {
+      logging(
+        LOGTYPE.ERROR,
+        '権限エラー',
+        'router',
+        '/upload-plugin',
+        getUsernameFromRequest(req)
+      );
+    }
   }
-});
+);
 
 router.post('/deletePlugin/', async (req, res, next) => {
   logging(
@@ -737,17 +772,19 @@ router.post('/deletePlugin/', async (req, res, next) => {
   // 権限の確認
   const authResult: ApiReturnObject = await checkAuth(
     getToken(req),
-    roll.systemManage
+    roll.pluginRegisterable
   );
   if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
     res.status(200).send(authResult);
   }
   if (authResult.body) {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    const body:{data:{plugin_id:number}} = req.body as {data:{plugin_id:number}};
+    const body: { data: { plugin_id: number } } = req.body as {
+      data: { plugin_id: number };
+    };
     deletePlugin(body.data.plugin_id)
-    .then((result) => res.status(200).send(result))
-    .catch(next);
+      .then((result) => res.status(200).send(result))
+      .catch(next);
   }
   // 権限が無い場合
   else {
