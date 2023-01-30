@@ -22,6 +22,7 @@ import pathModule from 'path';
 import * as jsonpointer from 'jsonpointer';
 import { JSONSchema7 } from './JsonToDatabase';
 import { getPropertyNameFromTag } from './SearchPatient';
+import { ParsedQs } from 'qs';
 
 export interface PackageDocumentRequest {
   jesgoCaseList: jesgoCaseDefine[];
@@ -1016,3 +1017,56 @@ export const updatePluginExecute = async (updateObject: updateObject) => {
     await dbAccess.end();
   }
 };
+
+
+export interface getPatientDocumentRequest extends ParsedQs {
+  caseId?: string;
+  schemaIds?: string;
+}
+
+export const getPatientDocuments = async (
+  query: getPatientDocumentRequest
+): Promise<ApiReturnObject> => {
+  logging(LOGTYPE.DEBUG, '呼び出し', 'Plugin', 'getPatientDocuments');
+
+  type dbRow = {
+    document_id:number;
+    case_id:number;
+    schema_id:string;
+    document:JSON;
+  };
+
+  let selectQuery =  `SELECT d.document_id, d.case_id, s.schema_id_string as schema_id, d.document 
+  FROM jesgo_document d JOIN jesgo_document_schema s 
+  ON d.schema_primary_id = s.schema_primary_id 
+  WHERE deleted = false`
+  let argIndex = 0;
+  const selectArg = [];
+
+  if(query.caseId) {
+    selectQuery += ` AND d.case_id = $${++argIndex}`;
+    selectArg.push(Number(query.caseId));
+  }
+  if(query.schemaIds){  
+    selectQuery += ` AND d.schema_id = any($${++argIndex})`;
+    const schemaIds:number[] = [];
+    const schemaIdsWithStr = query.schemaIds.split(',');
+    for (let index = 0; index < schemaIdsWithStr.length; index++) {
+      schemaIds.push(Number(schemaIdsWithStr[index]));
+    }
+    selectArg.push(schemaIds);
+  }
+
+  const dbAccess = new DbAccess();
+  try {
+    await dbAccess.connectWithConf();
+    const dbRows = (await dbAccess.query(selectQuery, selectArg)) as dbRow[];
+    return {statusNum: RESULT.NORMAL_TERMINATION, body: dbRows};
+  
+  } catch (e) {
+    logging(LOGTYPE.ERROR, (e as Error).message, 'Plugin', 'getPatientDocuments');
+    return {statusNum: RESULT.ABNORMAL_TERMINATION, body: null}
+  } finally {
+    await dbAccess.end();
+  }
+}
