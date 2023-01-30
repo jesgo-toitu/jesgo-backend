@@ -988,7 +988,12 @@ export const updatePluginExecute = async (updateObject: updateObject) => {
         const record = updateObject.target[key];
         const getKey = key.endsWith('/-') ? key.slice(0, -2) : key;
         const from = jsonpointer.get(document, getKey) as string;
-        jsonpointer.set(document, key, record);
+        // 配列の末尾に追加する場合、要素を1つずつ追加する
+        if (Array.isArray(record) && key.endsWith('/-')) {
+          record.forEach((item) => jsonpointer.set(document, key, item));
+        } else {
+          jsonpointer.set(document, key, record);
+        }
         const to = jsonpointer.get(document, getKey) as unknown;
         const toStr = typeof to === "string" ? to : JSON.stringify(to);
 
