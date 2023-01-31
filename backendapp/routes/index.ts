@@ -14,6 +14,7 @@ import {
   deleteUser,
   changePassword,
   getUsernameFromRequest,
+  getUserIdFromRequest,
 } from '../services/Users';
 import {
   deletePatient,
@@ -40,8 +41,11 @@ import { logging, LOGTYPE } from '../logic/Logger';
 import {
   deletePlugin,
   getPackagedDocument,
+  getPatientDocumentRequest,
+  getPatientDocuments,
   getPluginList,
   PackageDocumentRequest,
+  updatePluginExecute,
   uploadPluginZipFile,
 } from '../services/Plugin';
 
@@ -792,9 +796,74 @@ router.post('/deletePlugin/', async (req, res, next) => {
       LOGTYPE.ERROR,
       '権限エラー',
       'router',
-      '/upload-plugin',
+      '/deletePlugin',
       getUsernameFromRequest(req)
     );
+  }
+});
+
+router.post('/plugin-update/', async (req, res, next) => {
+  logging(
+    LOGTYPE.DEBUG,
+    '呼び出し',
+    'router',
+    '/plugin-update',
+    getUsernameFromRequest(req)
+  );
+  // 権限の確認
+  const authResult: ApiReturnObject = await checkAuth(
+    getToken(req),
+    roll.pluginUpdate
+  );
+  if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
+    res.status(200).send(authResult);
+  }
+  if (authResult.body) {
+    // eslint-disable-next-line
+    updatePluginExecute(req.body.data, getUserIdFromRequest(req))
+      .then((result) => res.status(200).send(result))
+      .catch(next);
+  }
+  // 権限が無い場合
+  else {
+    logging(
+      LOGTYPE.ERROR,
+      '権限エラー',
+      'router',
+      '/plugin-update',
+      getUsernameFromRequest(req)
+    );
+  }
+});
+
+router.get('/getPatientDocuments', async (req, res, next) => {
+  logging(
+    LOGTYPE.DEBUG,
+    '呼び出し',
+    'router',
+    '/getPatientDocuments',
+    getUsernameFromRequest(req)
+  );
+  // 権限の確認
+  const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.pluginUpdate);
+  if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
+    res.status(200).send(authResult);
+  } else {
+    if (authResult.body) {
+      getPatientDocuments(req.query as getPatientDocumentRequest)
+        .then((result) => res.status(200).send(result))
+        .catch(next);
+    }
+    // 権限が無い場合
+    else {
+      logging(
+        LOGTYPE.ERROR,
+        '権限エラー',
+        'router',
+        '/getPatientDocuments',
+        getUsernameFromRequest(req)
+      );
+    }
   }
 });
 /**

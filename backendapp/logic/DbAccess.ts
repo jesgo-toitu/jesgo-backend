@@ -48,9 +48,9 @@ export class DbAccess {
    * @param {any[]} parameters
    * @returns {Promise<unknown>}
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   public async query(
     query: string,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     parameters: any[] = [],
     queryType: 'update' | 'select' = 'select'
   ): Promise<unknown> {
@@ -63,7 +63,7 @@ export class DbAccess {
 
   /**
    * ロールバック
-   * @returns 
+   * @returns
    */
   public async rollback() {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-return
