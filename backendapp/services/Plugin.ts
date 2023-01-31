@@ -23,6 +23,7 @@ import * as jsonpointer from 'jsonpointer';
 import { JSONSchema7 } from './JsonToDatabase';
 import { getPropertyNameFromTag } from './SearchPatient';
 import { ParsedQs } from 'qs';
+import { parse } from 'acorn';
 
 export interface PackageDocumentRequest {
   jesgoCaseList: jesgoCaseDefine[];
@@ -386,6 +387,12 @@ const initJs = async (requireEsm: any, filePath: string) => {
   const retValue: initValueInfo = { path: filePath };
 
   try {
+    const scriptText = fs.readFileSync(
+      pathModule.join(process.cwd(), filePath),
+      { encoding: 'utf8' }
+    );
+    parse(scriptText, {ecmaVersion: 2022, sourceType: "module"});
+
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
     const loadModule: IPluginModule = await requireEsm(
       pathModule.join(process.cwd(), filePath)
@@ -402,10 +409,7 @@ const initJs = async (requireEsm: any, filePath: string) => {
 
       const initResult = await loadModule.init();
       if (initResult) {
-        initResult.script_text = fs.readFileSync(
-          pathModule.join(process.cwd(), filePath),
-          { encoding: 'utf8' }
-        );
+        initResult.script_text = scriptText;
 
         // show_upload_dialogは未設定時はTrueをデフォルトにする
         initResult.show_upload_dialog = initResult.show_upload_dialog ?? true;
