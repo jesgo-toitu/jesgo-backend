@@ -108,6 +108,7 @@ export interface localStorageObject {
 }
 
 interface rollAuth {
+  login: boolean;
   view: boolean;
   add: boolean;
   edit: boolean;
@@ -556,7 +557,7 @@ export const checkAuth = async (
 
     const authList: string[] = [];
     if (Array.isArray(targetAuth)) {
-      targetAuth = authList;
+      authList.push(...targetAuth);
     } else {
       authList.push(targetAuth);
     }
@@ -624,10 +625,18 @@ export const loginUser = async (
     };
   }
   const roll = (await dbAccess.query(
-    'SELECT view, add, edit, remove, plugin_registerable, plugin_executable_select, plugin_executable_update, data_manage, system_manage FROM jesgo_user_roll WHERE roll_id = $1',
+    'SELECT login, view, add, edit, remove, plugin_registerable, plugin_executable_select, plugin_executable_update, data_manage, system_manage FROM jesgo_user_roll WHERE roll_id = $1',
     [ret[0].roll_id]
   )) as rollAuth[];
   await dbAccess.end();
+
+  // ログイン権限ない場合はエラーを返す
+  if (!roll[0].login) {
+    return {
+      statusNum: RESULT.ABNORMAL_TERMINATION,
+      body: { token: 'error', reflesh_token: 'error' },
+    };
+  }
 
   if (compareSync(plainPassword, ret[0].password_hash)) {
     const returnObj: localStorageObject = {

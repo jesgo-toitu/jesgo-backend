@@ -93,7 +93,10 @@ router.get('/getJsonSchema', async (req, res, next) => {
     getUsernameFromRequest(req)
   );
   // 権限の確認
-  const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.view);
+  const authResult: ApiReturnObject = await checkAuth(getToken(req), [
+    roll.login,
+    roll.view,
+  ]);
   if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
     res.status(200).send(authResult);
   }
@@ -123,7 +126,10 @@ router.get('/getRootSchemaIds', async (req, res, next) => {
     getUsernameFromRequest(req)
   );
   // 権限の確認
-  const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.view);
+  const authResult: ApiReturnObject = await checkAuth(getToken(req), [
+    roll.login,
+    roll.view,
+  ]);
   if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
     res.status(200).send(authResult);
   }
@@ -249,7 +255,10 @@ router.post('/changeUserPassword/', async (req, res, next) => {
   );
 
   // 権限の確認
-  const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.view);
+  const authResult: ApiReturnObject = await checkAuth(getToken(req), [
+    roll.login,
+    roll.view,
+  ]);
   if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
     res.status(200).send(authResult);
   } else {
@@ -322,7 +331,10 @@ router.get('/patientlist', async (req, res, next) => {
     getUsernameFromRequest(req)
   );
   // 権限の確認
-  const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.view);
+  const authResult: ApiReturnObject = await checkAuth(
+    getToken(req),
+    roll.login
+  );
   if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
     res.status(200).send(authResult);
   } else {
@@ -396,7 +408,7 @@ router.post('/registrationCaseAndDocument/', async (req, res, next) => {
     getUsernameFromRequest(req)
   );
   // 権限の確認
-  const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.add);
+  const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.edit);
   if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
     res.status(200).send(authResult);
   }
@@ -458,10 +470,10 @@ router.get('/getblacklist/', async (req, res, next) => {
     getUsernameFromRequest(req)
   );
   // 権限の確認
-  const authResult: ApiReturnObject = await checkAuth(
-    getToken(req),
-    roll.systemManage
-  );
+  const authResult: ApiReturnObject = await checkAuth(getToken(req), [
+    roll.login,
+    roll.view,
+  ]);
   if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
     res.status(200).send(authResult);
   }
@@ -539,6 +551,7 @@ router.post('/updateSettings/', async (req, res, next) => {
  * プラグイン用 start
  */
 // eslint-disable-next-line
+// スキーマアップロード
 router.post('/upload/', upload.single('files'), async (req, res, next) => {
   logging(
     LOGTYPE.DEBUG,
@@ -651,10 +664,10 @@ router.post('/packaged-document/', async (req, res, next) => {
     getUsernameFromRequest(req)
   );
   // 権限の確認
-  const authResult: ApiReturnObject = await checkAuth(
-    getToken(req),
-    roll.systemManage
-  );
+  const authResult: ApiReturnObject = await checkAuth(getToken(req), [
+    roll.pluginSelect,
+    roll.pluginUpdate,
+  ]);
   if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
     res.status(200).send(authResult);
   }
@@ -690,7 +703,7 @@ router.get('/plugin-list/', async (req, res, next) => {
   // 権限の確認
   const authResult: ApiReturnObject = await checkAuth(
     getToken(req),
-    roll.pluginRegisterable
+    roll.login
   );
   if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
     res.status(200).send(authResult);
@@ -728,7 +741,7 @@ router.post(
     // 権限の確認
     const authResult: ApiReturnObject = await checkAuth(
       getToken(req),
-      roll.systemManage
+      roll.pluginRegisterable
     );
     if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
       res.status(200).send(authResult);
@@ -763,7 +776,7 @@ router.post('/deletePlugin/', async (req, res, next) => {
   // 権限の確認
   const authResult: ApiReturnObject = await checkAuth(
     getToken(req),
-    roll.systemManage
+    roll.pluginRegisterable
   );
   if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
     res.status(200).send(authResult);

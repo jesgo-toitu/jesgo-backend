@@ -374,7 +374,13 @@ export const updateSchemas = async (
       }
 
       await dbAccess.query(
-        'UPDATE jesgo_document_schema SET subschema = $1, child_schema = $2, inherit_schema = $3, valid_from = $4, valid_until = $5, hidden = $6 WHERE schema_primary_id = $7',
+        `UPDATE jesgo_document_schema SET
+        subschema = $1, child_schema = $2, inherit_schema = $3, valid_from = $4,
+        valid_until = $5, hidden = $6, base_schema = $7,
+        inherit_schema_default = $8,
+        subschema_default = $9,
+        child_schema_default = $10
+        WHERE schema_primary_id = $11`,
         [
           schema.subschema,
           schema.child_schema,
@@ -382,6 +388,10 @@ export const updateSchemas = async (
           validFrom,
           validUntil,
           schema.hidden,
+          schema.base_schema,
+          schema.inherit_schema_default,
+          schema.subschema_default,
+          schema.child_schema_default,
           schema.schema_primary_id,
         ]
       );

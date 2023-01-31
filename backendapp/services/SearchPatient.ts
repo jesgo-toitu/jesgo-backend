@@ -22,6 +22,7 @@ export interface dbRow {
   date_of_death: string;
   registration: string;
   decline: boolean;
+  event_date: Date | null;
 }
 
 export interface searchColumns {
@@ -37,6 +38,7 @@ interface userData {
   registedCancerGroup: string;
   since: string | null;
   startDate: string | null;
+  eventDate: (Date | null)[];
   lastUpdate: string;
   diagnosis: string;
   diagnosisMajor: string;
@@ -54,11 +56,12 @@ interface userData {
 }
 
 export interface searchPatientRequest extends ParsedQs {
-  treatmentStartYear: string;
+  initialTreatmentDate: string;
   cancerType: string;
   showOnlyTumorRegistry: string;
-  startOfDiagnosisDate: string;
-  endOfDiagnosisDate: string;
+  diagnosisDate: string;
+  eventDateType: string;
+  eventDate: string;
   checkOfDiagnosisDate: string;
   checkOfBlankFields: string;
   advancedStage: string;
@@ -118,6 +121,81 @@ const addStatus = (
   }
   // 新規文字列が既に含まれている
   return baseString;
+};
+
+/**
+ * 日付検索用文字列をDateに変換
+ * @param dateList
+ * @returns
+ */
+const convertSearchDateRange = (dateList: string[]) => {
+  let fromDate: Date | undefined;
+  let toDate: Date | undefined;
+  let fromDateSplited: string[] = [];
+  if (dateList.length > 0) {
+    // blank or dateFormatString
+    if (dateList[0]) {
+      // 日付の形式：yyyy-M-d
+      const fromDateArray = [1, 0, 1];
+      fromDateSplited = dateList[0].split('-');
+      fromDateArray[0] = fromDateSplited[0] ? Number(fromDateSplited[0]) : 1;
+      fromDateArray[1] = fromDateSplited[1]
+        ? Number(fromDateSplited[1]) - 1
+        : 0;
+      fromDateArray[2] = fromDateSplited[2] ? Number(fromDateSplited[2]) : 1;
+      fromDate = new Date(1900, fromDateArray[1], fromDateArray[2]);
+      fromDate.setFullYear(fromDateArray[0]);
+    }
+    // 2件以上あれば範囲検索
+    const toDateArray: (number | undefined)[] = [
+      undefined,
+      undefined,
+      undefined,
+    ];
+    if (dateList.length > 1) {
+      const toDateSplited = dateList[1].split('-');
+      toDateArray[0] = toDateSplited[0] ? Number(toDateSplited[0]) : 9999; // 未指定の場合は9999年
+      toDateArray[1] = toDateSplited[1] ? Number(toDateSplited[1]) - 1 : 11; // 未指定の場合は12月を設定
+      if (toDateSplited[2]) {
+        toDateArray[2] = Number(toDateSplited[2]);
+      } else {
+        // 未指定の場合は月末を設定。翌月の0日と指定すると月末が取れる
+        toDateArray[1] += 1;
+        toDateArray[2] = 0;
+      }
+      if (!fromDate) {
+        fromDate = new Date(1, 0, 1); //fromがない場合は0001/01/01
+        fromDate.setFullYear(1);
+      }
+    } else if (fromDate) {
+      // 単一検索の場合、fromの値からToを作る
+      // 年
+      toDateArray[0] = fromDateSplited[0] ? Number(fromDateSplited[0]) : 1;
+      // 月
+      toDateArray[1] = fromDateSplited[1] ? Number(fromDateSplited[1]) - 1 : 11; // 月がない場合は年単位なので12月指定
+      // 日
+      if (fromDateSplited[2]) {
+        toDateArray[2] = Number(fromDateSplited[2]);
+      } else {
+        // 未指定の場合は月末を設定。翌月の0日と指定すると月末が取れる
+        toDateArray[1] += 1;
+        toDateArray[2] = 0;
+      }
+    }
+    if (toDateArray.every((p) => p !== undefined)) {
+      toDate = new Date(1900, toDateArray[1]!, toDateArray[2]);
+      toDate.setFullYear(toDateArray[0]!);
+    }
+
+    const offset = new Date().getTimezoneOffset() * 60 * 1000;
+    if (fromDate) {
+      fromDate = new Date(fromDate.getTime() - offset);
+    }
+    if (toDate) {
+      toDate = new Date(toDate.getTime() - offset);
+    }
+  }
+  return { fromDate, toDate };
 };
 
 /**
@@ -181,7 +259,8 @@ export const searchPatients = async (
     date_of_death, decline, 
     to_char(ca.last_updated, 'yyyy/mm/dd') as last_updated, 
     doc.document as document,  document_schema, 
-    doc.child_documents, doc.document_id as document_id, ca.case_id as case_id, doc.deleted as deleted  
+    doc.child_documents, doc.document_id as document_id, ca.case_id as case_id, doc.deleted as deleted,  
+    doc.event_date
     FROM jesgo_document doc JOIN view_latest_schema sch ON doc.schema_id = sch.schema_id RIGHT OUTER JOIN jesgo_case ca ON ca.case_id = doc.case_id
     WHERE ca.deleted = false 
     ORDER BY ca.case_id , sch.schema_id_string;`
@@ -193,6 +272,8 @@ export const searchPatients = async (
   )) as searchColumns[];
 
   await dbAccess.end();
+
+  const dateOffset = new Date().getTimezoneOffset() * 60 * 1000;
 
   let recurrenceChildDocumentIds: number[] = [];
 
@@ -241,6 +322,7 @@ export const searchPatients = async (
         registedCancerGroup: '',
         since: null,
         startDate: null,
+        eventDate: [],
         lastUpdate: dbRow.last_updated,
         diagnosis: '',
         diagnosisMajor: '',
@@ -514,6 +596,11 @@ export const searchPatients = async (
         userData.fiveYearPrognosis.push('not_completed');
       }
     }
+
+    // イベント日
+    if (dbRow.event_date) {
+      userData.eventDate.push(dbRow.event_date);
+    }
   }
 
   // がん種結合
@@ -589,20 +676,27 @@ export const searchPatients = async (
     }
   }
 
-  // 初回治療日指定がある場合、初回治療日が異なるものを配列から削除する
-  if (query.treatmentStartYear && query.treatmentStartYear != 'all') {
-    for (let index = 0; index < userDataList.length; index++) {
-      const userData = userDataList[index];
-      if (userData.startDate == null) {
-        userDataList.splice(index, 1);
-        index--;
-        continue;
-      } else {
-        const startDate: Date = new Date(userData.startDate);
-        if (startDate.getFullYear().toString() !== query.treatmentStartYear) {
+  // 初回治療開始日での絞り込み
+  if (query.initialTreatmentDate) {
+    const dateList = convertSearchDateRange(
+      JSON.parse(query.initialTreatmentDate) as string[]
+    );
+
+    if (dateList.fromDate || dateList.toDate) {
+      for (let index = 0; index < userDataList.length; index++) {
+        const userData = userDataList[index];
+        if (userData.startDate == null) {
           userDataList.splice(index, 1);
           index--;
           continue;
+        } else {
+          const startDate: Date = new Date(userData.startDate);
+          // 範囲外のものを除外
+          if (dateList.fromDate! > startDate || startDate > dateList.toDate!) {
+            userDataList.splice(index, 1);
+            index--;
+            continue;
+          }
         }
       }
     }
@@ -625,35 +719,81 @@ export const searchPatients = async (
     }
   }
 
-  // 診断日指定がある場合、診断日が異なるものを配列から削除する
-  if (query.startOfDiagnosisDate) {
-    let startDate = query.startOfDiagnosisDate;
-    let endDate = query.endOfDiagnosisDate;
-    // 日付の開始と終了が前後してても対応する
-    if (startDate > endDate) {
-      startDate = query.endOfDiagnosisDate;
-      endDate = query.startOfDiagnosisDate;
-    }
-    for (let index = 0; index < userDataList.length; index++) {
-      const userData = userDataList[index];
+  // 診断日での絞り込み
+  if (query.diagnosisDate) {
+    const dateList = convertSearchDateRange(
+      JSON.parse(query.diagnosisDate) as string[]
+    );
 
-      // 診察日が指定されていないものを配列から削除する
-      if (userData.since === null) {
-        userDataList.splice(index, 1);
-        index--;
-        continue;
-      } else {
-        // ユーザーデータ側の診察日を同じ文字列形式(YYYY-MM)に直す
-        const dateObj = new Date(userData.since);
-        const y = dateObj.getFullYear();
-        const m = `00${dateObj.getMonth() + 1}`.slice(-2);
-        const diagnosisDate = `${y}-${m}`;
-
-        // 文字列で大小比較を行い、範囲外のものを配列から削除する
-        if (!(startDate <= diagnosisDate && diagnosisDate <= endDate)) {
+    if (dateList.fromDate || dateList.toDate) {
+      for (let index = 0; index < userDataList.length; index++) {
+        const userData = userDataList[index];
+        if (userData.since == null) {
           userDataList.splice(index, 1);
           index--;
           continue;
+        } else {
+          const since: Date = new Date(userData.since);
+          // 範囲外のものを除外
+          if (dateList.fromDate! > since || since > dateList.toDate!) {
+            userDataList.splice(index, 1);
+            index--;
+            continue;
+          }
+        }
+      }
+    }
+  }
+
+  // イベント日での絞り込み
+  if (query.eventDate) {
+    const dateList = convertSearchDateRange(
+      JSON.parse(query.eventDate) as string[]
+    );
+
+    if (dateList.fromDate || dateList.toDate) {
+      const isLatest = query.eventDateType !== '1';
+      for (let index = 0; index < userDataList.length; index++) {
+        const userData = userDataList[index];
+        if (userData.eventDate == null || userData.eventDate.length === 0) {
+          userDataList.splice(index, 1);
+          index--;
+          continue;
+        } else {
+          let isExclusion = false;
+          // 検索タイプが最新か全てかで処理分岐
+          if (isLatest) {
+            // 最新のeventdate取得
+            const eventDate = new Date(
+              Math.max(
+                ...userData.eventDate
+                  .filter((p) => p != null)
+                  .map((d) => d!.getTime())
+              ) - dateOffset
+            );
+
+            if (
+              dateList.fromDate! > eventDate ||
+              eventDate > dateList.toDate!
+            ) {
+              isExclusion = true;
+            }
+          } else {
+            // 全ての場合は、1つでも範囲内のイベント日があれば除外しない
+            isExclusion = !userData.eventDate
+              .filter((d) => d != null)
+              .some((d) => {
+                const date = new Date(d!.getTime() - dateOffset);
+                return dateList.fromDate! <= date && date <= dateList.toDate!;
+              });
+          }
+
+          // 範囲外のものを除外
+          if (isExclusion) {
+            userDataList.splice(index, 1);
+            index--;
+            continue;
+          }
         }
       }
     }
