@@ -1,5 +1,6 @@
 import { DbAccess } from '../logic/DbAccess';
 import {
+  Const,
   cutTempPath,
   formatDate,
   formatTime,
@@ -18,6 +19,11 @@ import * as path from 'path';
 import UUID from 'uuidjs';
 import { Extract } from 'unzipper';
 import pathModule from 'path';
+import * as jsonpointer from 'jsonpointer';
+import { JSONSchema7 } from './JsonToDatabase';
+import { getPropertyNameFromTag } from './SearchPatient';
+import { ParsedQs } from 'qs';
+import { parse } from 'acorn';
 
 export interface PackageDocumentRequest {
   jesgoCaseList: jesgoCaseDefine[];
@@ -59,11 +65,13 @@ const generateDocument = (
 ) => {
   const parentDoc = srcDocList.find((p) => p.document_id === docId);
   if (parentDoc) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let pushedObject: any;
     // ユニークな文書か否かで処理を分ける
     if (parentDoc.uniqueness) {
       // unique=trueの場合、基本的にはドキュメントをそのままセットする
       // 何かの手違いで複数作成されていた場合は配列にする
+      // eslint-disable-next-line no-prototype-builtins
       if ((baseObject as object).hasOwnProperty(parentDoc.title)) {
         pushedObject = parentDoc.document;
         if (!Array.isArray(baseObject[parentDoc.title])) {
@@ -89,6 +97,7 @@ const generateDocument = (
         !(baseObject as object).hasOwnProperty(parentDoc.title) ||
         !Array.isArray(baseObject[parentDoc.title])
       ) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         let tmp: any;
         if (baseObject[parentDoc.title]) {
           // 値があれば一旦退避
@@ -130,8 +139,13 @@ const generateDocument = (
  */
 export const getPackagedDocument = async (reqest: PackageDocumentRequest) => {
   logging(LOGTYPE.DEBUG, '呼び出し', 'Plugin', 'getPackagedDocument');
-  const { jesgoCaseList, schema_ids, document_id, filter_query, attachPatientInfoDetail } =
-    reqest;
+  const {
+    jesgoCaseList,
+    schema_ids,
+    document_id,
+    filter_query,
+    attachPatientInfoDetail,
+  } = reqest;
 
   const ret: PatientItemDefine[] = [];
 
@@ -161,6 +175,7 @@ export const getPackagedDocument = async (reqest: PackageDocumentRequest) => {
     // ドキュメントリスト取得
 
     // 抽出条件
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const whereList: [string, any][] = [];
     whereList.push(['case_id', caseIdList]);
     whereList.push(['deleted', false]);
@@ -172,7 +187,7 @@ export const getPackagedDocument = async (reqest: PackageDocumentRequest) => {
     }
     // フィルターが設定されている場合は追加
     if (filter_query) {
-      whereList.push(['document', filter_query])
+      whereList.push(['document', filter_query]);
     }
 
     // 再帰クエリで指定ドキュメントと子ドキュメントを一括取得する
@@ -198,7 +213,7 @@ export const getPackagedDocument = async (reqest: PackageDocumentRequest) => {
 
         if (Array.isArray(whereList[i][1])) {
           select += `doc.${whereList[i][0]} = any($${i + 1}) `;
-        } else if(whereList[i][0] === 'document') {
+        } else if (whereList[i][0] === 'document') {
           select += `doc.${whereList[i][0]} @@ $${i + 1} `;
         } else {
           select += `doc.${whereList[i][0]} = $${i + 1} `;
@@ -233,6 +248,10 @@ export const getPackagedDocument = async (reqest: PackageDocumentRequest) => {
     //#endregion
 
     for (const patInfo of caseRecords) {
+
+      // 抽出したドキュメントに存在しない患者はスキップ
+      if(!documentRecords.some(p => p.case_id === patInfo.case_id)) continue;
+
       // 患者ハッシュ値取得
       const hash = GetPatientHash(patInfo.date_of_birth, patInfo.his_id);
 
@@ -283,8 +302,13 @@ export const getPackagedDocument = async (reqest: PackageDocumentRequest) => {
 
       ret.push(patItem);
     }
-  } catch(err) {
-    logging(LOGTYPE.ERROR, `${(err as Error).message}`, 'Plugin', 'getPackagedDocument');
+  } catch (err) {
+    logging(
+      LOGTYPE.ERROR,
+      `${(err as Error).message}`,
+      'Plugin',
+      'getPackagedDocument'
+    );
     return { statusNum: RESULT.ABNORMAL_TERMINATION, body: null };
   } finally {
     await dbAccess.end();
@@ -345,6 +369,7 @@ export const getPluginList = async () => {
 // モジュールのFunc定義インターフェース
 interface IPluginModule {
   init: () => Promise<jesgoPluginColumns>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   main: (source: any, func: any) => Promise<any>;
   finalize?: () => Promise<void>;
 }
@@ -361,10 +386,17 @@ type initValueInfo = {
  * @param filePath
  * @returns
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const initJs = async (requireEsm: any, filePath: string) => {
   const retValue: initValueInfo = { path: filePath };
 
   try {
+    const scriptText = fs.readFileSync(
+      pathModule.join(process.cwd(), filePath),
+      { encoding: 'utf8' }
+    );
+    parse(scriptText, {ecmaVersion: 2022, sourceType: "module"});
+
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
     const loadModule: IPluginModule = await requireEsm(
       pathModule.join(process.cwd(), filePath)
@@ -381,10 +413,7 @@ const initJs = async (requireEsm: any, filePath: string) => {
 
       const initResult = await loadModule.init();
       if (initResult) {
-        initResult.script_text = fs.readFileSync(
-          pathModule.join(process.cwd(), filePath),
-          { encoding: 'utf8' }
-        );
+        initResult.script_text = scriptText;
 
         // show_upload_dialogは未設定時はTrueをデフォルトにする
         initResult.show_upload_dialog = initResult.show_upload_dialog ?? true;
@@ -662,6 +691,7 @@ const registerToJesgoPluginDB = async (
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const uploadPluginZipFile = async (
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   data: any,
   userId: number | undefined
 ): Promise<ApiReturnObject> => {
@@ -795,23 +825,268 @@ export const uploadPluginZipFile = async (
   }
 };
 
-export const deletePlugin = async (pluginId:number) => {
+export const deletePlugin = async (pluginId: number) => {
   logging(LOGTYPE.DEBUG, '呼び出し', 'Plugin', 'deletePlugin');
 
   const dbAccess = new DbAccess();
-  await dbAccess.connectWithConf();
+  try {
+    await dbAccess.connectWithConf();
 
-  let result = RESULT.NORMAL_TERMINATION;
+    let result = RESULT.NORMAL_TERMINATION;
 
-  const ret = await dbAccess.query(
-    'UPDATE jesgo_plugin SET deleted = true WHERE plugin_id = $1',
-    [pluginId]
-  );
-  await dbAccess.end();
-  if (ret) {
-    logging(LOGTYPE.INFO, `delete success plugin_id: ${pluginId}`, 'Plugin', 'deletePlugin');
-  } else {
-    result = RESULT.ABNORMAL_TERMINATION;
+    const ret = await dbAccess.query(
+      'UPDATE jesgo_plugin SET deleted = true WHERE plugin_id = $1',
+      [pluginId]
+    );
+
+    if (ret) {
+      logging(
+        LOGTYPE.INFO,
+        `delete success plugin_id: ${pluginId}`,
+        'Plugin',
+        'deletePlugin'
+      );
+    } else {
+      result = RESULT.ABNORMAL_TERMINATION;
+    }
+    return { statusNum: result, body: null };
+  } finally {
+    await dbAccess.end();
   }
-  return { statusNum: result, body: null };
+};
+
+type updateObject = {
+  isConfirmed?: boolean;
+  document_id?: number;
+  case_id?: number;
+  hash?: string;
+  case_no?: string;
+  schema_id?: string;
+  target: Record<string, string | number>;
+};
+
+type updateDocuments = {
+  document_id: number;
+  case_id: number;
+  schema_id: string;
+  document: JSON;
+}
+
+export const updatePluginExecute = async (updateObject: updateObject, executeUserId: number) => {
+  logging(LOGTYPE.DEBUG, '呼び出し', 'Plugin', 'updatePluginExecute');
+  if (!updateObject) {
+    return { statusNum: RESULT.ABNORMAL_TERMINATION, body: null };
+  }
+  const dbAccess = new DbAccess();
+  try {
+    await dbAccess.connectWithConf();
+
+    let patientHashList: { caseId: number; hash: string }[] | undefined;
+    let patientCaseNoList: { caseId: number; case_no: string }[] | undefined;
+
+    let hasDocId = false;
+    let targetId: number|undefined;
+    if (updateObject.document_id) {
+      // document_idがある場合、他の条件を一切使わないためフラグを立てる
+      hasDocId = true;
+    } else if (updateObject.case_id) {
+      // 更新対象はcase_idにする
+      targetId = updateObject.case_id;
+    } else if (updateObject.hash) {
+      // 更新対象はhashにする
+      if (!patientHashList) {
+        const ret = (await dbAccess.query(
+          'SELECT case_id, date_of_birth, his_id FROM jesgo_case WHERE deleted = false',
+          []
+        )) as { case_id: number; date_of_birth: Date; his_id: string }[];
+        patientHashList = [];
+        for (let index = 0; index < ret.length; index++) {
+          const patient = ret[index];
+          const patientHashObj = {
+            caseId: patient.case_id,
+            hash: GetPatientHash(patient.date_of_birth, patient.his_id),
+          };
+          patientHashList.push(patientHashObj);
+        }
+      }
+      targetId =
+        patientHashList.find((p) => p.hash === updateObject.hash)?.caseId ?? -1;
+    } else if (updateObject.case_no) {
+      // 更新対象は腫瘍登録番号とする
+      if (!patientCaseNoList) {
+        const ret = (await dbAccess.query(
+          `SELECT case_id, document, document_schema FROM jesgo_document d 
+          INNER JOIN
+          jesgo_document_schema s ON d.schema_primary_id = s.schema_primary_id
+          WHERE d.deleted = false AND 
+          d.schema_id IN 
+          (
+            SELECT schema_id FROM jesgo_document_schema 
+            WHERE document_schema::text like '%"jesgo:tag":"registration_number"%'
+          )`,
+          []
+        )) as {
+          case_id: number;
+          document: JSON;
+          document_schema: JSONSchema7;
+        }[];
+        patientCaseNoList = [];
+        for (let index = 0; index < ret.length; index++) {
+          const patient = ret[index];
+          const registrability =
+            getPropertyNameFromTag(
+              Const.JESGO_TAG.REGISTRABILITY,
+              patient.document,
+              patient.document_schema
+            ) ?? '';
+          if (registrability && registrability === 'はい') {
+            const registrationNumber =
+              getPropertyNameFromTag(
+                Const.JESGO_TAG.REGISTRATION_NUMBER,
+                patient.document,
+                patient.document_schema
+              ) ?? '';
+            if (registrationNumber) {
+              const patientCaseNoObj = {
+                caseId: patient.case_id,
+                case_no: registrationNumber,
+              };
+              patientCaseNoList.push(patientCaseNoObj);
+            }
+          }
+        }
+      }
+      targetId =
+        patientCaseNoList.find((p) => p.case_no === updateObject.case_no)?.caseId ??
+        undefined;
+    } else {
+      // 更新対象指定無し
+      return { statusNum: RESULT.ABNORMAL_TERMINATION, body: '更新対象が見つかりませんでした' };
+    }
+
+    let documents:updateDocuments[] = [];
+    let getDocumentQuery = 
+      `SELECT d.document_id, d.case_id, s.schema_id_string, d.document 
+      FROM jesgo_document d JOIN jesgo_document_schema s 
+      ON d.schema_primary_id = s.schema_primary_id 
+      WHERE deleted = false`;
+      const selectArgs = [];
+    if(hasDocId) {
+      getDocumentQuery += " AND d.document_id = $1";
+      selectArgs.push(updateObject.document_id);
+    }else if(updateObject.schema_id && targetId){
+        const schemaIds = await dbAccess.query(
+          "SELECT array_agg(schema_id) as schema_ids FROM jesgo_document_schema WHERE schema_id_string = $1",
+          [updateObject.schema_id]
+        ) as {schema_ids:number[]}[];
+        getDocumentQuery += " AND d.schema_id = any($1) AND case_id = $2";
+        selectArgs.push(lodash.uniq(schemaIds[0].schema_ids));
+        selectArgs.push(targetId);
+    } else {
+      // 更新対象指定無し
+      return { statusNum: RESULT.ABNORMAL_TERMINATION, body: '更新対象が見つかりませんでした' };
+    }
+
+    documents = await dbAccess.query(getDocumentQuery, selectArgs) as updateDocuments[];
+    const updateCheck = [];
+    let willUpdate = false;
+    for (let index = 0; index < documents.length; index++) {
+      const documentId = documents[index].document_id;
+      const document = documents[index].document;
+      for (const key in updateObject.target) {
+        const record = updateObject.target[key];
+        const getKey = key.endsWith('/-') ? key.slice(0, -2) : key;
+        const from = jsonpointer.get(document, getKey) as string;
+        // 配列の末尾に追加する場合、要素を1つずつ追加する
+        if (Array.isArray(record) && key.endsWith('/-')) {
+          record.forEach((item) => jsonpointer.set(document, key, item));
+        } else {
+          jsonpointer.set(document, key, record);
+        }
+        const to = jsonpointer.get(document, getKey) as unknown;
+        const toStr = typeof to === "string" ? to : JSON.stringify(to);
+
+        if(from && from !== toStr) {
+          const message = `${key}を${from}から${toStr}に置き換えます。`
+          updateCheck.push(message);
+        } else {
+          willUpdate = true;
+          const updateQuery = "UPDATE jesgo_document SET document = $1, last_updated = NOW(), registrant = $2 WHERE document_id = $3";
+          await dbAccess.query(updateQuery, [document, executeUserId, documentId]);
+        }
+      } 
+      if(updateObject.isConfirmed){
+        const updateQuery = "UPDATE jesgo_document SET document = $1, last_updated = NOW(), registrant = $2 WHERE document_id = $3";
+        await dbAccess.query(updateQuery, [document, executeUserId, documentId]);
+      } 
+    }
+
+    if(updateObject.isConfirmed){
+      return { statusNum: RESULT.NORMAL_TERMINATION, body: null };
+    }
+
+    if(updateCheck.length > 0){
+      return {statusNum: RESULT.NORMAL_TERMINATION, body: updateCheck};
+    }else if(willUpdate){
+      return {statusNum: RESULT.PLUGIN_ALREADY_UPDATED, body: []};
+    }
+    return {statusNum: RESULT.ABNORMAL_TERMINATION, body: []};
+  } catch (e) {
+    console.error(e);
+  } finally {
+    await dbAccess.end();
+  }
+};
+
+
+export interface getPatientDocumentRequest extends ParsedQs {
+  caseId?: string;
+  schemaIds?: string;
+}
+
+export const getPatientDocuments = async (
+  query: getPatientDocumentRequest
+): Promise<ApiReturnObject> => {
+  logging(LOGTYPE.DEBUG, '呼び出し', 'Plugin', 'getPatientDocuments');
+
+  type dbRow = {
+    document_id:number;
+    case_id:number;
+    schema_id:string;
+    document:JSON;
+  };
+
+  let selectQuery =  `SELECT d.document_id, d.case_id, s.schema_id_string as schema_id, d.document 
+  FROM jesgo_document d JOIN jesgo_document_schema s 
+  ON d.schema_primary_id = s.schema_primary_id 
+  WHERE deleted = false`
+  let argIndex = 0;
+  const selectArg = [];
+
+  if(query.caseId) {
+    selectQuery += ` AND d.case_id = $${++argIndex}`;
+    selectArg.push(Number(query.caseId));
+  }
+  if(query.schemaIds){  
+    selectQuery += ` AND d.schema_id = any($${++argIndex})`;
+    const schemaIds:number[] = [];
+    const schemaIdsWithStr = query.schemaIds.split(',');
+    for (let index = 0; index < schemaIdsWithStr.length; index++) {
+      schemaIds.push(Number(schemaIdsWithStr[index]));
+    }
+    selectArg.push(schemaIds);
+  }
+
+  const dbAccess = new DbAccess();
+  try {
+    await dbAccess.connectWithConf();
+    const dbRows = (await dbAccess.query(selectQuery, selectArg)) as dbRow[];
+    return {statusNum: RESULT.NORMAL_TERMINATION, body: dbRows};
+  
+  } catch (e) {
+    logging(LOGTYPE.ERROR, (e as Error).message, 'Plugin', 'getPatientDocuments');
+    return {statusNum: RESULT.ABNORMAL_TERMINATION, body: null}
+  } finally {
+    await dbAccess.end();
+  }
 }

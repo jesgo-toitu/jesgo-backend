@@ -108,6 +108,7 @@ export interface localStorageObject {
 }
 
 interface rollAuth {
+  login: boolean;
   view: boolean;
   add: boolean;
   edit: boolean;
@@ -503,6 +504,23 @@ export const getUsernameFromRequest = (req: any) => {
   }
 };
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const getUserIdFromRequest = (req: any) => {
+  logging(LOGTYPE.DEBUG, '呼び出し', 'Users', 'getUserIdFromRequest');
+  try {
+    const jwt: Jwt = { token: getToken(req) };
+    const myApiReturnObject = decordJwt(jwt);
+    if (myApiReturnObject.statusNum === RESULT.NORMAL_TERMINATION) {
+      return (myApiReturnObject.body as dispUser).user_id;
+    } else {
+      // 戻り値がエラーの場合は-1を返す
+      return -1;
+    }
+  } catch {
+    return -1;
+  }
+};
+
 /**
  *
  * @param token Jwt、あるいはNULL
@@ -539,7 +557,7 @@ export const checkAuth = async (
 
     const authList: string[] = [];
     if (Array.isArray(targetAuth)) {
-      targetAuth = authList;
+      authList.push(...targetAuth);
     } else {
       authList.push(targetAuth);
     }
@@ -607,10 +625,18 @@ export const loginUser = async (
     };
   }
   const roll = (await dbAccess.query(
-    'SELECT view, add, edit, remove, plugin_registerable, plugin_executable_select, plugin_executable_update, data_manage, system_manage FROM jesgo_user_roll WHERE roll_id = $1',
+    'SELECT login, view, add, edit, remove, plugin_registerable, plugin_executable_select, plugin_executable_update, data_manage, system_manage FROM jesgo_user_roll WHERE roll_id = $1',
     [ret[0].roll_id]
   )) as rollAuth[];
   await dbAccess.end();
+
+  // ログイン権限ない場合はエラーを返す
+  if (!roll[0].login) {
+    return {
+      statusNum: RESULT.ABNORMAL_TERMINATION,
+      body: { token: 'error', reflesh_token: 'error' },
+    };
+  }
 
   if (compareSync(plainPassword, ret[0].password_hash)) {
     const returnObj: localStorageObject = {

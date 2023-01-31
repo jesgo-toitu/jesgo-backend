@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import { ParseStream } from 'unzipper';
 
 export interface Obj {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   [prop: string]: any;
 }
 
