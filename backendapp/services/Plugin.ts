@@ -248,6 +248,10 @@ export const getPackagedDocument = async (reqest: PackageDocumentRequest) => {
     //#endregion
 
     for (const patInfo of caseRecords) {
+
+      // 抽出したドキュメントに存在しない患者はスキップ
+      if(!documentRecords.some(p => p.case_id === patInfo.case_id)) continue;
+
       // 患者ハッシュ値取得
       const hash = GetPatientHash(patInfo.date_of_birth, patInfo.his_id);
 
