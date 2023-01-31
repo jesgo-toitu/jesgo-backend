@@ -14,6 +14,7 @@ import {
   deleteUser,
   changePassword,
   getUsernameFromRequest,
+  getUserIdFromRequest,
 } from '../services/Users';
 import {
   deletePatient,
@@ -806,7 +807,7 @@ router.post('/plugin-update/', async (req, res, next) => {
   }
   if (authResult.body) {
     // eslint-disable-next-line
-    updatePluginExecute(req.body.data)
+    updatePluginExecute(req.body.data, getUserIdFromRequest(req))
       .then((result) => res.status(200).send(result))
       .catch(next);
   }

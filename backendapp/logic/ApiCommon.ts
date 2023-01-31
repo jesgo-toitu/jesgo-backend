@@ -15,6 +15,7 @@ export const RESULT = {
   TOKEN_EXPIRED_ERROR: -10,
   FAILED_USER_ALREADY_REGISTERED: -100,
   FAILED_USER_ERROR: -101,
+  PLUGIN_ALREADY_UPDATED: -201,
 };
 
 export const getToken = (req: any): string => {

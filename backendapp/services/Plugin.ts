@@ -864,7 +864,7 @@ type updateDocuments = {
   document: JSON;
 }
 
-export const updatePluginExecute = async (updateObject: updateObject) => {
+export const updatePluginExecute = async (updateObject: updateObject, executeUserId: number) => {
   logging(LOGTYPE.DEBUG, '呼び出し', 'Plugin', 'updatePluginExecute');
   if (!updateObject) {
     return { statusNum: RESULT.ABNORMAL_TERMINATION, body: null };
@@ -981,6 +981,7 @@ export const updatePluginExecute = async (updateObject: updateObject) => {
 
     documents = await dbAccess.query(getDocumentQuery, selectArgs) as updateDocuments[];
     const updateCheck = [];
+    let willUpdate = false;
     for (let index = 0; index < documents.length; index++) {
       const documentId = documents[index].document_id;
       const document = documents[index].document;
@@ -997,25 +998,31 @@ export const updatePluginExecute = async (updateObject: updateObject) => {
         const to = jsonpointer.get(document, getKey) as unknown;
         const toStr = typeof to === "string" ? to : JSON.stringify(to);
 
-        const message = from ? `${key}を${from}から${toStr}に置き換えます。` : `${key}に新規に${toStr}を追加します。`
-        if(message){
+        if(from && from !== toStr) {
+          const message = `${key}を${from}から${toStr}に置き換えます。`
           updateCheck.push(message);
+        } else {
+          willUpdate = true;
+          const updateQuery = "UPDATE jesgo_document SET document = $1, last_updated = NOW(), registrant = $2 WHERE document_id = $3";
+          await dbAccess.query(updateQuery, [document, executeUserId, documentId]);
         }
       } 
       if(updateObject.isConfirmed){
-        const updateQuery = "UPDATE jesgo_document SET document = $1 WHERE document_id = $2";
-        await dbAccess.query(updateQuery, [document, documentId]);
-
-      }
+        const updateQuery = "UPDATE jesgo_document SET document = $1, last_updated = NOW(), registrant = $2 WHERE document_id = $3";
+        await dbAccess.query(updateQuery, [document, executeUserId, documentId]);
+      } 
     }
 
     if(updateObject.isConfirmed){
       return { statusNum: RESULT.NORMAL_TERMINATION, body: null };
     }
 
-    const result = updateCheck.length === 0 ? RESULT.ABNORMAL_TERMINATION : RESULT.NORMAL_TERMINATION;
-
-    return { statusNum: result, body: updateCheck };
+    if(updateCheck.length > 0){
+      return {statusNum: RESULT.NORMAL_TERMINATION, body: updateCheck};
+    }else if(willUpdate){
+      return {statusNum: RESULT.PLUGIN_ALREADY_UPDATED, body: []};
+    }
+    return {statusNum: RESULT.ABNORMAL_TERMINATION, body: []};
   } catch (e) {
     console.error(e);
   } finally {

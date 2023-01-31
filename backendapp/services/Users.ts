@@ -503,6 +503,23 @@ export const getUsernameFromRequest = (req: any) => {
   }
 };
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const getUserIdFromRequest = (req: any) => {
+  logging(LOGTYPE.DEBUG, '呼び出し', 'Users', 'getUserIdFromRequest');
+  try {
+    const jwt: Jwt = { token: getToken(req) };
+    const myApiReturnObject = decordJwt(jwt);
+    if (myApiReturnObject.statusNum === RESULT.NORMAL_TERMINATION) {
+      return (myApiReturnObject.body as dispUser).user_id;
+    } else {
+      // 戻り値がエラーの場合は-1を返す
+      return -1;
+    }
+  } catch {
+    return -1;
+  }
+};
+
 /**
  *
  * @param token Jwt、あるいはNULL
