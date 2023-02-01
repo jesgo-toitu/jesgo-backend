@@ -4,6 +4,7 @@ import { ApiReturnObject, RESULT } from '../logic/ApiCommon';
 import lodash from 'lodash';
 import { logging, LOGTYPE } from '../logic/Logger';
 import { Extract } from 'unzipper';
+import UUID from 'uuidjs';
 import * as fs from 'fs';
 import fse from 'fs-extra';
 import * as path from 'path';
@@ -17,10 +18,6 @@ import {
   jesgo_tagging,
   streamPromise,
 } from '../logic/Utility';
-
-// 定数
-// 一時展開用パス
-const dirPath = './tmp';
 
 //インターフェース
 
@@ -427,6 +424,7 @@ const hasVersionUpdateError = (
 const makeInsertQuery = (
   schemaInfoList: oldSchema[],
   json: JSONSchema7,
+  dirPath: string,
   fileName: string,
   errorMessages: string[]
 ): [string, string[], string[]] => {
@@ -730,7 +728,8 @@ const makeInsertQuery = (
 
 const fileListInsert = async (
   fileList: string[],
-  errorMessages: string[]
+  errorMessages: string[],
+  dirPath: string
 ): Promise<number> => {
   logging(LOGTYPE.DEBUG, `呼び出し`, 'JsonToDatabase', 'fileListInsert');
   let updateNum = 0;
@@ -822,6 +821,7 @@ const fileListInsert = async (
     const [query, values, subqueryValues] = makeInsertQuery(
       oldJsonData,
       jsons[i],
+      dirPath,
       fileList[i],
       errorMessages
     );
@@ -1223,7 +1223,7 @@ export const jsonToSchema = async (): Promise<ApiReturnObject> => {
     await dbAccess.connectWithConf();
     await dbAccess.query('BEGIN');
 
-    await fileListInsert(fileList, []);
+    await fileListInsert(fileList, [], dirPath);
 
     await schemaListUpdate();
 
@@ -1246,6 +1246,9 @@ export const jsonToSchema = async (): Promise<ApiReturnObject> => {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const uploadZipFile = async (data: any): Promise<ApiReturnObject> => {
   logging(LOGTYPE.DEBUG, '呼び出し', 'JsonToDatabase', 'uploadZipFile');
+  // 一時展開用パス
+  // eslint-disable-next-line
+  const dirPath = `./tmp/${UUID.generate()}`;
   // eslint-disable-next-line
   const filePath: string = data.path;
   const errorMessages: string[] = [];
@@ -1297,7 +1300,7 @@ export const uploadZipFile = async (data: any): Promise<ApiReturnObject> => {
 
     await dbAccess.connectWithConf();
 
-    const updateNum = await fileListInsert(fileList, errorMessages);
+    const updateNum = await fileListInsert(fileList, errorMessages, dirPath);
 
     // スキーマが1件以上新規登録、更新された場合のみ関係性のアップデートを行う
     if (updateNum > 0) {
