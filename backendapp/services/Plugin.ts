@@ -20,7 +20,7 @@ import UUID from 'uuidjs';
 import { Extract } from 'unzipper';
 import pathModule from 'path';
 import * as jsonpointer from 'jsonpointer';
-import { JSONSchema7 } from './JsonToDatabase';
+import { getItemsAndNames, JSONSchema7 } from './JsonToDatabase';
 import { getPropertyNameFromTag } from './SearchPatient';
 import { ParsedQs } from 'qs';
 import { parse } from 'acorn';
@@ -869,7 +869,9 @@ type updateDocuments = {
   document_id: number;
   case_id: number;
   schema_id: string;
+  event_date: Date;
   document: JSON;
+  document_schema: JSONSchema7;
 }
 
 export const updatePluginExecute = async (updateObject: updateObject, executeUserId: number) => {
@@ -966,7 +968,7 @@ export const updatePluginExecute = async (updateObject: updateObject, executeUse
 
     let documents:updateDocuments[] = [];
     let getDocumentQuery = 
-      `SELECT d.document_id, d.case_id, s.schema_id_string, d.document 
+      `SELECT d.document_id, d.case_id, s.schema_id_string, d.event_date, d.document, s.document_schema 
       FROM jesgo_document d JOIN jesgo_document_schema s 
       ON d.schema_primary_id = s.schema_primary_id 
       WHERE deleted = false`;
@@ -993,6 +995,7 @@ export const updatePluginExecute = async (updateObject: updateObject, executeUse
     for (let index = 0; index < documents.length; index++) {
       const documentId = documents[index].document_id;
       const document = documents[index].document;
+      const oldDocument = lodash.cloneDeep(document);
       for (const key in updateObject.target) {
         const record = updateObject.target[key];
         const getKey = key.endsWith('/-') ? key.slice(0, -2) : key;
@@ -1011,13 +1014,86 @@ export const updatePluginExecute = async (updateObject: updateObject, executeUse
           updateCheck.push(message);
         } else {
           willUpdate = true;
+          // eventDate変更に関わらずまずドキュメントを更新する
           const updateQuery = "UPDATE jesgo_document SET document = $1, last_updated = NOW(), registrant = $2 WHERE document_id = $3";
           await dbAccess.query(updateQuery, [document, executeUserId, documentId]);
+
+          const oldEventDate = getPropertyNameFromSet('eventdate', oldDocument, documents[index].document_schema);
+          const newEventDate = getPropertyNameFromSet('eventdate', document, documents[index].document_schema) as string | null;
+          if(oldEventDate === newEventDate){
+            // eventDateに変更がない場合はeventDate更新はしない
+          } else if(newEventDate === null){
+            // eventDateが実数値からnullに変更された
+            // まず親のeventDateを持ってくる
+            const parent = await dbAccess.query('SELECT event_date FROM jesgo_document WHERE child_documents @> ARRAY[$1];', [document]) as {event_date:Date|null}[];
+            const ret = await changeChildsEventDate(documentId,documents[index].case_id, parent[0].event_date);
+            
+            // 死亡日時変更フラグあり(本来来ないはず)
+            if(ret.isDeathDateupdated){
+              await dbAccess.query(
+                'UPDATE jesgo_case SET date_of_death = $1, last_updated = NOW(), registrant = $2 WHERE case_id = $3',
+                [parent[0].event_date, executeUserId, documents[index].case_id]);
+            }
+            // 対象のドキュメントすべてのevent_dateを更新する
+            await dbAccess.query(
+              'UPDATE jesgo_document SET event_date = $1, last_updated = NOW(), registrant = $2 WHERE document_id = any($3)',
+              [parent[0].event_date, executeUserId, ret.updateDocIds]);
+          } else {
+            // eventDateに変更がある
+            const ret = await changeChildsEventDate(documentId,documents[index].case_id, newEventDate);
+            // 死亡日時変更フラグあり
+            if(ret.isDeathDateupdated){
+              await dbAccess.query(
+                'UPDATE jesgo_case SET date_of_death = $1, last_updated = NOW(), registrant = $2 WHERE case_id = $3',
+                [newEventDate, executeUserId, documents[index].case_id]);
+            }
+            // 対象のドキュメントすべてのevent_dateを更新する
+            await dbAccess.query(
+              'UPDATE jesgo_document SET event_date = $1, last_updated = NOW(), registrant = $2 WHERE document_id = any($3)',
+              [newEventDate, executeUserId, ret.updateDocIds]);
+          }
         }
       } 
       if(updateObject.isConfirmed){
+        // ★TODO: 上の上書き未確認時の処理と全く同じなのでまとめたい
+        // eventDate変更に関わらずまずドキュメントを更新する
         const updateQuery = "UPDATE jesgo_document SET document = $1, last_updated = NOW(), registrant = $2 WHERE document_id = $3";
         await dbAccess.query(updateQuery, [document, executeUserId, documentId]);
+
+        const oldEventDate = getPropertyNameFromSet('eventdate', oldDocument, documents[index].document_schema);
+        const newEventDate = getPropertyNameFromSet('eventdate', document, documents[index].document_schema) as string | null;
+        if(oldEventDate === newEventDate){
+          // eventDateに変更がない場合はeventDate更新はしない
+        } else if(newEventDate === null){
+          // eventDateが実数値からnullに変更された
+          // まず親のeventDateを持ってくる
+          const parent = await dbAccess.query('SELECT event_date FROM jesgo_document WHERE child_documents @> ARRAY[$1];', [document]) as {event_date:Date|null}[];
+          const ret = await changeChildsEventDate(documentId,documents[index].case_id, parent[0].event_date);
+          
+          // 死亡日時変更フラグあり(本来来ないはず)
+          if(ret.isDeathDateupdated){
+            await dbAccess.query(
+              'UPDATE jesgo_case SET date_of_death = $1, last_updated = NOW(), registrant = $2 WHERE case_id = $3',
+              [parent[0].event_date, executeUserId, documents[index].case_id]);
+          }
+          // 対象のドキュメントすべてのevent_dateを更新する
+          await dbAccess.query(
+            'UPDATE jesgo_document SET event_date = $1, last_updated = NOW(), registrant = $2 WHERE document_id = any($3)',
+            [parent[0].event_date, executeUserId, ret.updateDocIds]);
+        } else {
+          // eventDateに変更がある
+          const ret = await changeChildsEventDate(documentId,documents[index].case_id, newEventDate);
+          // 死亡日時変更フラグあり
+          if(ret.isDeathDateupdated){
+            await dbAccess.query(
+              'UPDATE jesgo_case SET date_of_death = $1, last_updated = NOW(), registrant = $2 WHERE case_id = $3',
+              [newEventDate, executeUserId, documents[index].case_id]);
+          }
+          // 対象のドキュメントすべてのevent_dateを更新する
+          await dbAccess.query(
+            'UPDATE jesgo_document SET event_date = $1, last_updated = NOW(), registrant = $2 WHERE document_id = any($3)',
+            [newEventDate, executeUserId, ret.updateDocIds]);
+        }
       } 
     }
 
@@ -1087,6 +1163,120 @@ export const getPatientDocuments = async (
     logging(LOGTYPE.ERROR, (e as Error).message, 'Plugin', 'getPatientDocuments');
     return {statusNum: RESULT.ABNORMAL_TERMINATION, body: null}
   } finally {
+    await dbAccess.end();
+  }
+}
+
+export const getPropertyNameFromSet = (
+  setName: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  document: any,
+  schema: JSONSchema7
+): unknown | null => {
+  logging(LOGTYPE.DEBUG, '呼び出し', 'Plugin', 'getPropertyNameFromSet');
+
+  const schemaItems = getItemsAndNames(schema);
+  let retText = null;
+  for (let i = 0; i < schemaItems.pNames.length; i++) {
+    const prop = schemaItems.pItems[schemaItems.pNames[i]] as JSONSchema7;
+    // 該当プロパティがオブジェクトの場合、タグが付いてるかを確認
+    if (typeof prop === 'object') {
+      // タグが付いていれば値を取得する
+      if (prop['jesgo:set'] && prop['jesgo:set'] == setName) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+        const tempText = document[schemaItems.pNames[i]] as string | null;
+        if (tempText && tempText !== '') {
+          retText = tempText;
+        }
+      }
+      // タグがなければ中を再帰的に見に行く
+      else {
+        // ドキュメントが入れ子になっている場合、現在見ているプロパティネームの下にオブジェクトが存在すればそちらを新たなオブジェクトとして渡す
+        // eslint-disable-next-line
+        const newDocument = document[schemaItems.pNames[i]]
+          ? // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+            document[schemaItems.pNames[i]]
+          : document;
+        const ret = getPropertyNameFromSet(setName, newDocument, prop);
+        if (ret !== null) {
+          retText = ret;
+        }
+      }
+    }
+    // オブジェクトでなければ中を見る必要無し
+  }
+  return retText;
+};
+
+type eventdateUpdateReturns = {
+  updateDocIds:number[];
+  isDeathDateupdated:boolean;
+}
+
+/**
+ * eventDate更新の必要がある場合、すべての必要なドキュメントIDを返す
+ * @param documentId 今回eventDateが更新されたドキュメントのID
+ * @param caseId 更新されたドキュメントの症例ID
+ * @param eventDate 更新先のeventDate
+ * @return updateDocIds:更新対象すべてのドキュメントIDの配列, isDeathDateupdated:死亡日を更新するか否か
+ */
+const changeChildsEventDate = async (documentId:number, caseId:number, eventDate:string|Date|null):Promise<eventdateUpdateReturns>=> {
+  logging(LOGTYPE.DEBUG, '呼び出し', 'Plugin', 'changeChildsEventDate');
+  const updateDocumentIds:number[] = [];
+  let isFirst = true;
+  let isDeathDateupdated = false;
+  const paramEventDate = typeof eventDate === 'string' ? new Date(eventDate) : eventDate;
+  type updateDocumentWithChilds = updateDocuments & {
+    child_documents: number[];
+  }
+
+  // 更新条件に当てはまれば自身を更新対象に追加しつつ、再帰的に子ドキュメントでも実行する
+  // 自身が更新対象にならなければそこから下は見ない
+  const recrusiveUpdate = (allDocuments:updateDocumentWithChilds[], documentId:number) => {
+    const document = allDocuments.find(p => p.document_id === documentId);
+    if(document){
+      const stringSchema = JSON.stringify(document.document_schema);
+      if(isFirst || 
+        document.event_date !== paramEventDate && 
+        (!stringSchema.includes(`"jesgo:set":"eventdate"`) || 
+        stringSchema.includes(`"jesgo:set":"eventdate"`) && getPropertyNameFromSet('eventdate', document.document, document.document_schema) === null)
+        ) {
+        isFirst = false;
+        updateDocumentIds.push(document.document_id);
+        if(stringSchema.includes(`"jesgo:set":"death"`) && getPropertyNameFromSet('death', document.document, document.document_schema) === true){
+          isDeathDateupdated = true;
+        }
+        for (let index = 0; index < document.child_documents.length; index++) {
+          const childDocumentId = document.child_documents[index];
+          recrusiveUpdate(allDocuments, childDocumentId);
+        }
+      }
+    }
+  }
+
+  const dbAccess = new DbAccess();
+  try {
+    await dbAccess.connectWithConf();
+    const allDocuments = await dbAccess.query(
+      `SELECT d.document_id, d.case_id, d.child_documents, s.schema_id_string, d.document, s.document_schema 
+      FROM jesgo_document d JOIN jesgo_document_schema s 
+      ON d.schema_primary_id = s.schema_primary_id 
+      WHERE deleted = false AND d.case_id = $1`, [caseId]) as updateDocumentWithChilds[];
+
+    recrusiveUpdate(allDocuments, documentId);
+
+    return {
+      updateDocIds:updateDocumentIds,
+      isDeathDateupdated
+    };
+  }catch(e){
+    logging(LOGTYPE.ERROR, `【エラー】${(e as Error).message}`, 'Plugin', 'changeChildsEventDate');
+    console.error(e);
+    return {
+      updateDocIds:[],
+      isDeathDateupdated:false,
+    }
+  }finally{
     await dbAccess.end();
   }
 }
