@@ -40,6 +40,8 @@ import { ApiReturnObject, getToken, RESULT } from '../logic/ApiCommon';
 import { logging, LOGTYPE } from '../logic/Logger';
 import {
   deletePlugin,
+  getCaseIdAndDocIdList,
+  getCaseIdAndHashList,
   getPackagedDocument,
   getPatientDocumentRequest,
   getPatientDocuments,
@@ -48,6 +50,7 @@ import {
   updatePluginExecute,
   uploadPluginZipFile,
 } from '../services/Plugin';
+import routing from './routing';
 
 const app = express();
 app.use(helmet());
@@ -866,6 +869,15 @@ router.get('/getPatientDocuments', async (req, res, next) => {
     }
   }
 });
+
+router.get('/getCaseIdAndDocIdList', async (req, res, next) => {
+  await routing('/getCaseIdAndDocIdList', getCaseIdAndDocIdList, req, res, next, roll.pluginUpdate);
+});
+
+router.get('/getCaseIdAndHashList', async (req, res, next) => {
+  await routing('/getCaseIdAndHashList', getCaseIdAndHashList, req, res, next, roll.pluginUpdate);
+});
+
 /**
  * プラグイン用 end
  */

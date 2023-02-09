@@ -854,6 +854,10 @@ export const deletePlugin = async (pluginId: number) => {
     await dbAccess.end();
   }
 };
+type updateObjects = {
+  case_id: number;
+  objects: updateObject[];
+}
 
 type updateObject = {
   isConfirmed?: boolean;
@@ -872,11 +876,13 @@ type updateDocuments = {
   document: JSON;
 }
 
-export const updatePluginExecute = async (updateObject: updateObject, executeUserId: number) => {
+export const updatePluginExecute = async (updateObjects: updateObjects, executeUserId: number) => {
   logging(LOGTYPE.DEBUG, '呼び出し', 'Plugin', 'updatePluginExecute');
-  if (!updateObject) {
+  console.log(updateObjects)
+  if (!updateObjects) {
     return { statusNum: RESULT.ABNORMAL_TERMINATION, body: null };
   }
+
   const dbAccess = new DbAccess();
   try {
     await dbAccess.connectWithConf();
@@ -886,6 +892,12 @@ export const updatePluginExecute = async (updateObject: updateObject, executeUse
 
     let hasDocId = false;
     let targetId: number|undefined;
+    const checkList = [];
+    const updateList = [];
+    for (let index = 0; index < updateObjects.objects.length; index++) {
+      const updateObject = updateObjects.objects[index];
+      
+    }
     if (updateObject.document_id) {
       // document_idがある場合、他の条件を一切使わないためフラグを立てる
       hasDocId = true;
@@ -1036,6 +1048,7 @@ export const updatePluginExecute = async (updateObject: updateObject, executeUse
   } finally {
     await dbAccess.end();
   }
+  */
 };
 
 
@@ -1085,6 +1098,58 @@ export const getPatientDocuments = async (
   
   } catch (e) {
     logging(LOGTYPE.ERROR, (e as Error).message, 'Plugin', 'getPatientDocuments');
+    return {statusNum: RESULT.ABNORMAL_TERMINATION, body: null}
+  } finally {
+    await dbAccess.end();
+  }
+}
+
+export const getCaseIdAndDocIdList = async () => {
+  logging(LOGTYPE.DEBUG, '呼び出し', 'Plugin', 'getCaseIdAndDocIdList');
+  type dbRow = {
+    case_id: number;
+    document_id: number;
+  }
+  const dbAccess = new DbAccess();
+  try {
+    await dbAccess.connectWithConf();
+    const dbRows = (await dbAccess.query('SELECT case_id, document_id FROM jesgo_document WHERE deleted = false')) as dbRow[];
+    return {statusNum: RESULT.NORMAL_TERMINATION, body: dbRows};
+  
+  } catch (e) {
+    logging(LOGTYPE.ERROR, (e as Error).message, 'Plugin', 'getCaseIdAndDocIdList');
+    return {statusNum: RESULT.ABNORMAL_TERMINATION, body: null}
+  } finally {
+    await dbAccess.end();
+  }
+}
+
+export const getCaseIdAndHashList = async () => {
+  logging(LOGTYPE.DEBUG, '呼び出し', 'Plugin', 'getCaseIdAndHashList');
+  type hashRow = {
+    case_id: number;
+    hash: string;
+  }
+  const dbAccess = new DbAccess();
+  try {
+    await dbAccess.connectWithConf();
+    const ret = (await dbAccess.query(
+      'SELECT case_id, date_of_birth, his_id FROM jesgo_case WHERE deleted = false',
+      []
+    )) as { case_id: number; date_of_birth: Date; his_id: string }[];
+    const patientHashList:hashRow[] = [];
+    for (let index = 0; index < ret.length; index++) {
+      const patient = ret[index];
+      const patientHashObj = {
+        case_id: patient.case_id,
+        hash: GetPatientHash(patient.date_of_birth, patient.his_id),
+      };
+      patientHashList.push(patientHashObj);
+    }
+    return {statusNum: RESULT.NORMAL_TERMINATION, body: patientHashList};
+  
+  } catch (e) {
+    logging(LOGTYPE.ERROR, (e as Error).message, 'Plugin', 'getCaseIdAndHashList');
     return {statusNum: RESULT.ABNORMAL_TERMINATION, body: null}
   } finally {
     await dbAccess.end();
