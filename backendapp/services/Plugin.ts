@@ -1190,14 +1190,14 @@ export const updatePluginExecute = async (
             const ret = await changeChildsEventDate(
               documentId,
               documents[index].case_id,
-              parent[0].event_date
+              parent[0]?.event_date
             );
 
             if (oldEventDate !== newEventDate) {
               // 対象のドキュメントすべてのevent_dateを更新する
               await dbAccess.query(
                 'UPDATE jesgo_document SET event_date = $1, last_updated = NOW(), registrant = $2 WHERE document_id = any($3)',
-                [parent[0].event_date, executeUserId, ret.updateDocIds]
+                [parent[0]?.event_date, executeUserId, ret.updateDocIds]
               );
               updatedCaseIdList.add(documents[index].case_id);
             }
@@ -1253,14 +1253,14 @@ export const updatePluginExecute = async (
           const ret = await changeChildsEventDate(
             documentId,
             documents[index].case_id,
-            parent[0].event_date
+            parent[0]?.event_date
           );
 
           if (oldEventDate !== newEventDate) {
             // 対象のドキュメントすべてのevent_dateを更新する
             await dbAccess.query(
               'UPDATE jesgo_document SET event_date = $1, last_updated = NOW(), registrant = $2 WHERE document_id = any($3)',
-              [parent[0].event_date, executeUserId, ret.updateDocIds]
+              [parent[0]?.event_date, executeUserId, ret.updateDocIds]
             );
             updatedCaseIdList.add(documents[index].case_id);
           }
