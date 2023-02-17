@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
@@ -40,8 +42,10 @@ import { ApiReturnObject, getToken, RESULT } from '../logic/ApiCommon';
 import { logging, LOGTYPE } from '../logic/Logger';
 import {
   deletePlugin,
+  executeUpdate,
   getCaseIdAndDocIdList,
   getCaseIdAndHashList,
+  getDocumentsAndNameList,
   getPackagedDocument,
   getPatientDocumentRequest,
   getPatientDocuments,
@@ -805,40 +809,6 @@ router.post('/deletePlugin/', async (req, res, next) => {
   }
 });
 
-router.post('/plugin-update/', async (req, res, next) => {
-  logging(
-    LOGTYPE.DEBUG,
-    '呼び出し',
-    'router',
-    '/plugin-update',
-    getUsernameFromRequest(req)
-  );
-  // 権限の確認
-  const authResult: ApiReturnObject = await checkAuth(
-    getToken(req),
-    roll.pluginUpdate
-  );
-  if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
-    res.status(200).send(authResult);
-  }
-  if (authResult.body) {
-    // eslint-disable-next-line
-    updatePluginExecute(req.body.data, getUserIdFromRequest(req))
-      .then((result) => res.status(200).send(result))
-      .catch(next);
-  }
-  // 権限が無い場合
-  else {
-    logging(
-      LOGTYPE.ERROR,
-      '権限エラー',
-      'router',
-      '/plugin-update',
-      getUsernameFromRequest(req)
-    );
-  }
-});
-
 router.get('/getPatientDocuments', async (req, res, next) => {
   logging(
     LOGTYPE.DEBUG,
@@ -870,6 +840,14 @@ router.get('/getPatientDocuments', async (req, res, next) => {
   }
 });
 
+router.post('/plugin-update', async (req, res, next) => {
+  await routing('/plugin-update', updatePluginExecute, req, res, next, roll.pluginUpdate, req.body.data);
+});
+
+router.post('/executeUpdate', async (req, res, next) => {
+  await routing('/executeUpdate', executeUpdate, req, res, next, roll.pluginUpdate, {updateObjects:req.body.data, executeUserId:getUserIdFromRequest(req) });
+});
+
 router.get('/getCaseIdAndDocIdList', async (req, res, next) => {
   await routing('/getCaseIdAndDocIdList', getCaseIdAndDocIdList, req, res, next, roll.pluginUpdate);
 });
@@ -877,6 +855,11 @@ router.get('/getCaseIdAndDocIdList', async (req, res, next) => {
 router.get('/getCaseIdAndHashList', async (req, res, next) => {
   await routing('/getCaseIdAndHashList', getCaseIdAndHashList, req, res, next, roll.pluginUpdate);
 });
+
+router.get('/getDocumentsAndNameList', async (req, res, next) => {
+  await routing('/getDocumentsAndNameList', getDocumentsAndNameList, req, res, next, roll.pluginUpdate, 5);
+});
+
 
 /**
  * プラグイン用 end

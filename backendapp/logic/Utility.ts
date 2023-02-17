@@ -112,3 +112,36 @@ export const streamPromise = async (stream: ParseStream) => {
 // 日付文字列判定
 export const isDateStr = (dateStr: string) =>
   !Number.isNaN(new Date(dateStr).getTime());
+
+// Jsonpointerの末尾に配列指定系の文字列が含まれているかを返す
+export const isPointerWithArray = (pointer:string) => {
+  if(pointer.endsWith("/-")){
+    return true;
+  }
+  const match = pointer.match(/\/(\d+)$/);
+  if(match) {
+    return true;
+  }
+  return false;
+}
+
+// Jsonpointerの末尾から配列位置指定を取得する
+export const getPointerArrayNum = (pointer:string) => {
+  const match = pointer.match(/\/(\d+)$/);
+  if(match) {
+    return Number(match.slice(1));
+  }
+  return -1;
+}
+
+// Jsonpointerの末尾から配列位置指定を削除する
+export const getPointerTrimmed = (pointer:string) => {
+  if(pointer.endsWith("/-")){
+    return pointer.slice(0, -2);
+  }
+  const match = pointer.match(/\/(\d+)$/);
+  if(match) {
+    return pointer.slice(0, -(match.length))
+  }
+  return pointer;
+}
