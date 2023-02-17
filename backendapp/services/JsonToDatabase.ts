@@ -1263,7 +1263,7 @@ export const uploadZipFile = async (data: any): Promise<ApiReturnObject> => {
         break;
       case '.json':
         if (!fs.existsSync(dirPath)) {
-          fs.mkdirSync(dirPath);
+          fs.mkdirSync(dirPath, { recursive: true });
         }
         // eslint-disable-next-line
         fs.copyFileSync(filePath, path.join(dirPath, data.originalname));
