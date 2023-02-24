@@ -876,6 +876,7 @@ type updateObject = {
   hash?: string;
   case_no?: string;
   schema_id?: string;
+  schema_ids: number[];
   target: Record<string, string | number>;
 };
 
@@ -1044,21 +1045,29 @@ export const updatePluginExecute = async (
     let patientHashList: { caseId: number; hash: string }[] | undefined;
     let patientCaseNoList: { caseId: number; case_no: string }[] | undefined;
 
-    let hasDocId = false;
     let targetId: number | undefined;
+    let hasDocId = false;
+    let targetIdFromHash: number | undefined;
+    let targetIdFromCaseNo: number | undefined;
+    let targetIdFromFunction: number | undefined;
+    
     const checkList:updateCheckObject[] = [];
     const updateList:updateCheckObject[] = [];
     for (let index = 0; index < updateObjects.objects.length; index++) {
       const updateObject = updateObjects.objects[index];
       
       if (updateObject.document_id) {
-        // document_idがある場合、他の条件を一切使わないためフラグを立てる
+        // document_idがある場合、フラグを立てる
         hasDocId = true;
-      } else if (updateObject.case_id) {
-        // 更新対象はcase_idにする
-        targetId = updateObject.case_id;
-      } else if (updateObject.hash) {
-        // 更新対象はhashにする
+      }
+      
+      if (updateObject.case_id) {
+        // case_id由来の対象症例IDを保存する
+        targetIdFromFunction = updateObject.case_id;
+      }
+      
+      if (updateObject.hash) {
+        // hash由来の対象症例IDを保存する
         if (!patientHashList) {
           const ret = (await dbAccess.query(
             'SELECT case_id, date_of_birth, his_id FROM jesgo_case WHERE deleted = false',
@@ -1074,10 +1083,13 @@ export const updatePluginExecute = async (
             patientHashList.push(patientHashObj);
           }
         }
-        targetId =
+        targetIdFromHash =
           patientHashList.find((p) => p.hash === updateObject.hash)?.caseId ?? -1;
-      } else if (updateObject.case_no) {
-        // 更新対象は腫瘍登録番号とする
+      }
+      
+      if (updateObject.case_no) {
+        // 腫瘍登録番号由来の対象症例IDを保存する
+        targetIdFromCaseNo = -1;
         if (!patientCaseNoList) {
           const ret = (await dbAccess.query(
             `SELECT case_id, document, document_schema FROM jesgo_document d 
@@ -1121,12 +1133,9 @@ export const updatePluginExecute = async (
             }
           }
         }
-        targetId =
+        targetIdFromCaseNo =
           patientCaseNoList.find((p) => p.case_no === updateObject.case_no)
-            ?.caseId ?? undefined;
-      } else {
-        // 更新対象指定無し
-        continue;
+            ?.caseId ?? -1;
       }
   
       let documents: updateDocuments[] = [];
@@ -1135,20 +1144,41 @@ export const updatePluginExecute = async (
         ON d.schema_primary_id = s.schema_primary_id 
         WHERE deleted = false`;
       const selectArgs = [];
+      const tmpSchemaId = (await dbAccess.query(
+        'SELECT array_agg(schema_id) as schema_ids FROM jesgo_document_schema WHERE schema_id_string = $1',
+        [updateObject.schema_id]
+      )) as { schema_ids: number[] }[];
+      let augmentArrayIndex = 1;
+      const tmpSchemaIdFromPlugin = updateObject.schema_ids ?? [];
+      const schemaIds = lodash.uniq(tmpSchemaIdFromPlugin.concat(tmpSchemaId[0].schema_ids));
+
+      // すべての検索条件をANDで結合して検索条件にする
+      
+      // document_id
       if (hasDocId) {
-        getDocumentQuery += ' AND d.document_id = $1';
+        getDocumentQuery += ` AND d.document_id = $${augmentArrayIndex++}`;
         selectArgs.push(updateObject.document_id);
-      } else if (updateObject.schema_id && targetId) {
-        const schemaIds = (await dbAccess.query(
-          'SELECT array_agg(schema_id) as schema_ids FROM jesgo_document_schema WHERE schema_id_string = $1',
-          [updateObject.schema_id]
-        )) as { schema_ids: number[] }[];
-        getDocumentQuery += ' AND d.schema_id = any($1) AND case_id = $2';
-        selectArgs.push(lodash.uniq(schemaIds[0].schema_ids));
-        selectArgs.push(targetId);
-      } else {
-        // 更新対象指定無し
-        continue;
+      }
+      
+      // case_id
+      if (targetIdFromFunction) {
+        getDocumentQuery += ` AND d.schema_id = any($${augmentArrayIndex++}) AND case_id = $${augmentArrayIndex++}`;
+        selectArgs.push(schemaIds);
+        selectArgs.push(targetIdFromFunction);
+      }
+
+      // hash
+      if (targetIdFromHash) {
+        getDocumentQuery += ` AND d.schema_id = any($${augmentArrayIndex++}) AND case_id = $${augmentArrayIndex++}`;
+        selectArgs.push(schemaIds);
+        selectArgs.push(targetIdFromFunction);
+      }
+
+      // case_no
+      if (targetIdFromCaseNo) {
+        getDocumentQuery += ` AND d.schema_id = any($${augmentArrayIndex++}) AND case_id = $${augmentArrayIndex++}`;
+        selectArgs.push(schemaIds);
+        selectArgs.push(targetIdFromCaseNo);
       }
   
       documents = (await dbAccess.query(
@@ -1175,6 +1205,7 @@ export const updatePluginExecute = async (
           const getKey = isPointerWithArray(key) ? getPointerTrimmed(key) : key;
           const from = jsonpointer.get(baseDocument, getKey) as string | number | any[] | undefined;
           const fromStr = typeof from === 'string' ? from : JSON.stringify(from);
+          const isEmpty = Array.isArray(from) && from.length === 0;
           // 配列の末尾に追加する場合、要素を1つずつ追加する
           if (Array.isArray(record) && key.endsWith('/-')) {
             record.forEach((item) => jsonpointer.set(document, key, item));
@@ -1184,7 +1215,7 @@ export const updatePluginExecute = async (
           const to = jsonpointer.get(document, getKey) as string | number | any[] | undefined;
           const toStr = typeof to === 'string' ? to : JSON.stringify(to);
   
-          if (fromStr !== toStr) {
+          if (from && !isEmpty && fromStr !== toStr && fromStr !== "") {
             const tmpTitle = docIdBasedNameObjects?.find(p => p.document_id === documentId)?.fullPath ?? "";
             const tmpUpdateCheckObj:updateCheckObject = {
               pointer: key,
