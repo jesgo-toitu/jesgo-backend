@@ -1174,6 +1174,7 @@ export const updatePluginExecute = async (
           const baseDocument = lodash.cloneDeep(document);
           const getKey = isPointerWithArray(key) ? getPointerTrimmed(key) : key;
           const from = jsonpointer.get(baseDocument, getKey) as string | number | any[] | undefined;
+          const fromStr = typeof from === 'string' ? from : JSON.stringify(from);
           // 配列の末尾に追加する場合、要素を1つずつ追加する
           if (Array.isArray(record) && key.endsWith('/-')) {
             record.forEach((item) => jsonpointer.set(document, key, item));
@@ -1183,7 +1184,7 @@ export const updatePluginExecute = async (
           const to = jsonpointer.get(document, getKey) as string | number | any[] | undefined;
           const toStr = typeof to === 'string' ? to : JSON.stringify(to);
   
-          if (from && from !== toStr) {
+          if (fromStr !== toStr) {
             const tmpTitle = docIdBasedNameObjects?.find(p => p.document_id === documentId)?.fullPath ?? "";
             const tmpUpdateCheckObj:updateCheckObject = {
               pointer: key,
