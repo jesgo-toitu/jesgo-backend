@@ -1171,7 +1171,7 @@ export const updatePluginExecute = async (
       if (targetIdFromHash) {
         getDocumentQuery += ` AND d.schema_id = any($${augmentArrayIndex++}) AND case_id = $${augmentArrayIndex++}`;
         selectArgs.push(schemaIds);
-        selectArgs.push(targetIdFromFunction);
+        selectArgs.push(targetIdFromHash);
       }
 
       // case_no
@@ -1320,7 +1320,7 @@ export const executeUpdate = async (arg:{updateObjects:updateCheckObject[], exec
           caseId,
           parent[0]?.event_date
         );
-    
+        
         if (oldEventDate !== newEventDate) {
           // 対象のドキュメントすべてのevent_dateを更新する
           await dbAccess.query(
