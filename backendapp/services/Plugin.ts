@@ -1124,16 +1124,30 @@ export const updatePluginExecute = async (
 
       // hash
       if (targetIdFromHash) {
-        getDocumentQuery += ` AND d.schema_id = any($${augmentArrayIndex++}) AND case_id = $${augmentArrayIndex++}`;
-        selectArgs.push(schemaIds);
-        selectArgs.push(targetIdFromHash);
+        if(hasDocId){
+          // document_idがある場合は補助キーとしてのみ扱う
+          getDocumentQuery += ` AND case_id = $${augmentArrayIndex++}`;
+          selectArgs.push(targetIdFromHash);
+        } else {
+          // document_idがない場合はschema_idと合わせて検索に使用する
+          getDocumentQuery += ` AND d.schema_id = any($${augmentArrayIndex++}) AND case_id = $${augmentArrayIndex++}`;
+          selectArgs.push(schemaIds);
+          selectArgs.push(targetIdFromHash);
+        }
       }
 
       // case_no
       if (targetIdFromCaseNo) {
-        getDocumentQuery += ` AND d.schema_id = any($${augmentArrayIndex++}) AND case_id = $${augmentArrayIndex++}`;
-        selectArgs.push(schemaIds);
-        selectArgs.push(targetIdFromCaseNo);
+        if(hasDocId){
+          // document_idがある場合は補助キーとしてのみ扱う
+          getDocumentQuery += ` AND case_id = $${augmentArrayIndex++}`;
+          selectArgs.push(targetIdFromCaseNo);
+        } else {
+          // document_idがない場合はschema_idと合わせて検索に使用する
+          getDocumentQuery += ` AND d.schema_id = any($${augmentArrayIndex++}) AND case_id = $${augmentArrayIndex++}`;
+          selectArgs.push(schemaIds);
+          selectArgs.push(targetIdFromCaseNo);
+        }
       }
   
       // case_id
