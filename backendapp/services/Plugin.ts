@@ -68,6 +68,18 @@ type docNameObject = {
   schema_id: number;
 };
 
+// ハッシュと症例IDの対応表
+type hashRow = {
+  case_id: number;
+  hash: string;
+};
+
+// 腫瘍登録番号と症例IDの対応表
+type caseNoRow = {
+  case_id: number;
+  caseNo: string;
+};
+
 // ドキュメント生成
 const generateDocument = (
   docId: number,
@@ -319,7 +331,7 @@ export const getPackagedDocument = async (reqest: PackageDocumentRequest) => {
       'Plugin',
       'getPackagedDocument'
     );
-    return { statusNum: RESULT.ABNORMAL_TERMINATION, body: null };
+    return { statusNum: RESULT.ABNORMAL_TERMINATION, body: undefined };
   } finally {
     await dbAccess.end();
   }
@@ -1042,8 +1054,8 @@ export const updatePluginExecute = async (
   try {
     await dbAccess.connectWithConf();
 
-    let patientHashList: { caseId: number; hash: string }[] | undefined;
-    let patientCaseNoList: { caseId: number; case_no: string }[] | undefined;
+    let patientHashList: hashRow[] | undefined;
+    let patientCaseNoList: caseNoRow[] | undefined;
 
     let targetId: number | undefined;
     let hasDocId = false;
@@ -1069,73 +1081,23 @@ export const updatePluginExecute = async (
       if (updateObject.hash) {
         // hash由来の対象症例IDを保存する
         if (!patientHashList) {
-          const ret = (await dbAccess.query(
-            'SELECT case_id, date_of_birth, his_id FROM jesgo_case WHERE deleted = false',
-            []
-          )) as { case_id: number; date_of_birth: Date; his_id: string }[];
-          patientHashList = [];
-          for (let index = 0; index < ret.length; index++) {
-            const patient = ret[index];
-            const patientHashObj = {
-              caseId: patient.case_id,
-              hash: GetPatientHash(patient.date_of_birth, patient.his_id),
-            };
-            patientHashList.push(patientHashObj);
-          }
+          const ret = await getCaseIdAndHashList();
+          patientHashList = ret.body;
         }
         targetIdFromHash =
-          patientHashList.find((p) => p.hash === updateObject.hash)?.caseId ?? -1;
+          patientHashList?.find((p) => p.hash === updateObject.hash)?.case_id ?? -1;
       }
       
       if (updateObject.case_no) {
         // 腫瘍登録番号由来の対象症例IDを保存する
         targetIdFromCaseNo = -1;
         if (!patientCaseNoList) {
-          const ret = (await dbAccess.query(
-            `SELECT case_id, document, document_schema FROM jesgo_document d 
-            INNER JOIN
-            jesgo_document_schema s ON d.schema_primary_id = s.schema_primary_id
-            WHERE d.deleted = false AND 
-            d.schema_id IN 
-            (
-              SELECT schema_id FROM jesgo_document_schema 
-              WHERE document_schema::text like '%"jesgo:tag":"registration_number"%'
-            )`,
-            []
-          )) as {
-            case_id: number;
-            document: JSON;
-            document_schema: JSONSchema7;
-          }[];
-          patientCaseNoList = [];
-          for (let index = 0; index < ret.length; index++) {
-            const patient = ret[index];
-            const registrability =
-              getPropertyNameFromTag(
-                Const.JESGO_TAG.REGISTRABILITY,
-                patient.document,
-                patient.document_schema
-              ) ?? '';
-            if (registrability && registrability === 'はい') {
-              const registrationNumber =
-                getPropertyNameFromTag(
-                  Const.JESGO_TAG.REGISTRATION_NUMBER,
-                  patient.document,
-                  patient.document_schema
-                ) ?? '';
-              if (registrationNumber) {
-                const patientCaseNoObj = {
-                  caseId: patient.case_id,
-                  case_no: registrationNumber,
-                };
-                patientCaseNoList.push(patientCaseNoObj);
-              }
-            }
-          }
+          const ret = await getCaseIdAndCaseNoList();
+          patientCaseNoList = ret.body;
         }
         targetIdFromCaseNo =
-          patientCaseNoList.find((p) => p.case_no === updateObject.case_no)
-            ?.caseId ?? -1;
+          patientCaseNoList?.find((p) => p.caseNo === updateObject.case_no)
+            ?.case_id ?? -1;
       }
   
       let documents: updateDocuments[] = [];
@@ -1571,7 +1533,7 @@ export const getCaseIdAndDocIdList = async () => {
   type dbRow = {
     case_id: number;
     document_id: number;
-  }
+  };
   const dbAccess = new DbAccess();
   try {
     await dbAccess.connectWithConf();
@@ -1580,7 +1542,7 @@ export const getCaseIdAndDocIdList = async () => {
   
   } catch (e) {
     logging(LOGTYPE.ERROR, (e as Error).message, 'Plugin', 'getCaseIdAndDocIdList');
-    return {statusNum: RESULT.ABNORMAL_TERMINATION, body: null}
+    return {statusNum: RESULT.ABNORMAL_TERMINATION, body: undefined}
   } finally {
     await dbAccess.end();
   }
@@ -1588,10 +1550,6 @@ export const getCaseIdAndDocIdList = async () => {
 
 export const getCaseIdAndHashList = async () => {
   logging(LOGTYPE.DEBUG, '呼び出し', 'Plugin', 'getCaseIdAndHashList');
-  type hashRow = {
-    case_id: number;
-    hash: string;
-  }
   const dbAccess = new DbAccess();
   try {
     await dbAccess.connectWithConf();
@@ -1612,7 +1570,7 @@ export const getCaseIdAndHashList = async () => {
   
   } catch (e) {
     logging(LOGTYPE.ERROR, (e as Error).message, 'Plugin', 'getCaseIdAndHashList');
-    return {statusNum: RESULT.ABNORMAL_TERMINATION, body: null}
+    return {statusNum: RESULT.ABNORMAL_TERMINATION, body: undefined}
   } finally {
     await dbAccess.end();
   }
@@ -1620,11 +1578,6 @@ export const getCaseIdAndHashList = async () => {
 
 export const getCaseIdAndCaseNoList = async () => {
   logging(LOGTYPE.DEBUG, '呼び出し', 'Plugin', 'getCaseIdAndCaseNoList');
-  type caseNoRow = {
-    case_id: number;
-    caseNo: string;
-  }
-
   const dbAccess = new DbAccess();
   try {
     await dbAccess.connectWithConf();
@@ -1675,7 +1628,7 @@ export const getCaseIdAndCaseNoList = async () => {
   
   } catch (e) {
     logging(LOGTYPE.ERROR, (e as Error).message, 'Plugin', 'getCaseIdAndCaseNoList');
-    return {statusNum: RESULT.ABNORMAL_TERMINATION, body: null}
+    return {statusNum: RESULT.ABNORMAL_TERMINATION, body: undefined}
   } finally {
     await dbAccess.end();
   }
@@ -1781,7 +1734,7 @@ export const getDocumentsAndNameList = async (caseId:number) => {
   
   } catch (e) {
     logging(LOGTYPE.ERROR, (e as Error).message, 'Plugin', 'getDocumentsAndNameList');
-    return {statusNum: RESULT.ABNORMAL_TERMINATION, body: null}
+    return {statusNum: RESULT.ABNORMAL_TERMINATION, body: undefined}
   } finally {
     await dbAccess.end();
   }
