@@ -382,7 +382,7 @@ export const getPluginList = async () => {
       'Plugin',
       'getPluginList'
     );
-    return { statusNum: RESULT.ABNORMAL_TERMINATION, body: null };
+    return { statusNum: RESULT.ABNORMAL_TERMINATION, body: undefined };
   } finally {
     await dbAccess.end();
   }
@@ -871,7 +871,7 @@ export const deletePlugin = async (pluginId: number) => {
     } else {
       result = RESULT.ABNORMAL_TERMINATION;
     }
-    return { statusNum: result, body: null };
+    return { statusNum: result, body: undefined };
   } finally {
     await dbAccess.end();
   }
@@ -1048,7 +1048,7 @@ export const updatePluginExecute = async (
   logging(LOGTYPE.DEBUG, '呼び出し', 'Plugin', 'updatePluginExecute');
   let docIdBasedNameObjects: docNameObject[]|undefined;
   if (!updateObjects) {
-    return { statusNum: RESULT.ABNORMAL_TERMINATION, body: null };
+    return { statusNum: RESULT.ABNORMAL_TERMINATION, body: undefined };
   }
   const dbAccess = new DbAccess();
   try {
@@ -1121,13 +1121,6 @@ export const updatePluginExecute = async (
         getDocumentQuery += ` AND d.document_id = $${augmentArrayIndex++}`;
         selectArgs.push(updateObject.document_id);
       }
-      
-      // case_id
-      if (targetIdFromFunction) {
-        getDocumentQuery += ` AND d.schema_id = any($${augmentArrayIndex++}) AND case_id = $${augmentArrayIndex++}`;
-        selectArgs.push(schemaIds);
-        selectArgs.push(targetIdFromFunction);
-      }
 
       // hash
       if (targetIdFromHash) {
@@ -1143,6 +1136,20 @@ export const updatePluginExecute = async (
         selectArgs.push(targetIdFromCaseNo);
       }
   
+      // case_id
+      if (targetIdFromFunction) {
+        if(hasDocId || targetIdFromHash || targetIdFromCaseNo){
+          // その他の特定要素がある場合は補助キーとしてのみ扱う
+          getDocumentQuery += ` AND case_id = $${augmentArrayIndex++}`;
+          selectArgs.push(targetIdFromFunction);
+        } else {
+          // 他に特定要素がない場合はschema_idと合わせて検索に使用する
+          getDocumentQuery += ` AND d.schema_id = any($${augmentArrayIndex++}) AND case_id = $${augmentArrayIndex++}`;
+          selectArgs.push(schemaIds);
+          selectArgs.push(targetIdFromFunction);
+        }
+      }
+
       documents = (await dbAccess.query(
         getDocumentQuery,
         selectArgs
@@ -1393,7 +1400,7 @@ export const getPatientDocuments = async (
       'Plugin',
       'getPatientDocuments'
     );
-    return { statusNum: RESULT.ABNORMAL_TERMINATION, body: null };
+    return { statusNum: RESULT.ABNORMAL_TERMINATION, body: undefined };
   } finally {
     await dbAccess.end();
   }
