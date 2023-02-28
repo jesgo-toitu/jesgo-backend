@@ -43,6 +43,7 @@ import { logging, LOGTYPE } from '../logic/Logger';
 import {
   deletePlugin,
   executeUpdate,
+  getCaseIdAndCaseNoList,
   getCaseIdAndDocIdList,
   getCaseIdAndHashList,
   getDocumentsAndNameList,
@@ -854,6 +855,10 @@ router.get('/getCaseIdAndDocIdList', async (req, res, next) => {
 
 router.get('/getCaseIdAndHashList', async (req, res, next) => {
   await routing('/getCaseIdAndHashList', getCaseIdAndHashList, req, res, next, roll.pluginUpdate);
+});
+
+router.get('/getCaseIdAndCaseNoList', async (req, res, next) => {
+  await routing('/getCaseIdAndCaseNoList', getCaseIdAndCaseNoList, req, res, next, roll.pluginUpdate);
 });
 
 router.get('/getDocumentsAndNameList', async (req, res, next) => {

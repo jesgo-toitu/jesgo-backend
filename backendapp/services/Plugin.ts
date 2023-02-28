@@ -1618,6 +1618,69 @@ export const getCaseIdAndHashList = async () => {
   }
 };
 
+export const getCaseIdAndCaseNoList = async () => {
+  logging(LOGTYPE.DEBUG, '呼び出し', 'Plugin', 'getCaseIdAndCaseNoList');
+  type caseNoRow = {
+    case_id: number;
+    caseNo: string;
+  }
+
+  const dbAccess = new DbAccess();
+  try {
+    await dbAccess.connectWithConf();
+    const ret = (await dbAccess.query(
+      `SELECT case_id, document, document_schema FROM jesgo_document d 
+      INNER JOIN
+      jesgo_document_schema s ON d.schema_primary_id = s.schema_primary_id
+      WHERE d.deleted = false AND 
+      d.schema_id IN 
+      (
+        SELECT schema_id FROM jesgo_document_schema 
+        WHERE document_schema::text like '%"jesgo:tag":"registration_number"%'
+      )`,
+      []
+    )) as {
+      case_id: number;
+      document: JSON;
+      document_schema: JSONSchema7;
+    }[];
+
+    const patientCaseNoList:caseNoRow[] = [];
+    for (let index = 0; index < ret.length; index++) {
+      const patient = ret[index];
+      const registrability =
+        getPropertyNameFromTag(
+          Const.JESGO_TAG.REGISTRABILITY,
+          patient.document,
+          patient.document_schema
+        ) ?? '';
+      if (registrability && registrability === 'はい') {
+        const registrationNumber =
+          getPropertyNameFromTag(
+            Const.JESGO_TAG.REGISTRATION_NUMBER,
+            patient.document,
+            patient.document_schema
+          ) ?? '';
+        if (registrationNumber) {
+          const patientCaseNoObj:caseNoRow = {
+            case_id: patient.case_id,
+            caseNo: registrationNumber,
+          };
+          patientCaseNoList.push(patientCaseNoObj);
+        }
+      }
+    }
+
+    return {statusNum: RESULT.NORMAL_TERMINATION, body: patientCaseNoList};
+  
+  } catch (e) {
+    logging(LOGTYPE.ERROR, (e as Error).message, 'Plugin', 'getCaseIdAndCaseNoList');
+    return {statusNum: RESULT.ABNORMAL_TERMINATION, body: null}
+  } finally {
+    await dbAccess.end();
+  }
+};
+
 export const getDocumentsAndNameList = async (caseId:number) => {
   logging(LOGTYPE.DEBUG, '呼び出し', 'Plugin', 'getDocumentsAndNameList');
   const getTitle = (title:string, subTitle:string) => {
