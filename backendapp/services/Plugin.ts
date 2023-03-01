@@ -1242,7 +1242,6 @@ export const updatePluginExecute = async (
 };
 
 export const executeUpdate = async (arg:{updateObjects:updateCheckObject[], executeUserId:number }) => {
-  // TODO: トランザクションを入れる
   logging(LOGTYPE.DEBUG, '呼び出し', 'Plugin', 'executeUpdate');
   const updatedCaseIdList: Set<number> = new Set();
   const dbAccess = new DbAccess();
@@ -1354,11 +1353,20 @@ export const executeUpdate = async (arg:{updateObjects:updateCheckObject[], exec
       }
     }
     await dbAccess.query('COMMIT');
+    for (let index = 0; index < arg.updateObjects.length; index++) {
+      const documentId = arg.updateObjects[index].document_id;
+      const pointer = arg.updateObjects[index].pointer;
+      const record = arg.updateObjects[index].record;
+      const recordStr = typeof record === "string" ? record : JSON.stringify(record);
+      logging(LOGTYPE.INFO, `【UPDATE】docID:${documentId}, ${pointer} : ${recordStr}`, 'Plugin', 'executeUpdate');
+    }
+    
+    return {statusNum: RESULT.NORMAL_TERMINATION, body: undefined };
   } catch (e) {
     await dbAccess.query('ROLLBACK');
     console.error(e);
     logging(LOGTYPE.ERROR, `【エラー】${(e as Error).message}`, 'Plugin', 'executeUpdate');
-    
+    return { statusNum: RESULT.ABNORMAL_TERMINATION, body: (e as Error).message };
   } finally {
     await dbAccess.end();
   }
