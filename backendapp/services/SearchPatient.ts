@@ -131,6 +131,9 @@ const addStatus = (
 const convertSearchDateRange = (dateList: string[]) => {
   let fromDate: Date | undefined;
   let toDate: Date | undefined;
+
+  if (!dateList[0] && !dateList[1]) return { fromDate, toDate };
+
   let fromDateSplited: string[] = [];
   if (dateList.length > 0) {
     // blank or dateFormatString
