@@ -819,7 +819,10 @@ router.get('/getPatientDocuments', async (req, res, next) => {
     getUsernameFromRequest(req)
   );
   // 権限の確認
-  const authResult: ApiReturnObject = await checkAuth(getToken(req), roll.pluginUpdate);
+  const authResult: ApiReturnObject = await checkAuth(
+    getToken(req),
+    roll.pluginUpdate
+  );
   if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
     res.status(200).send(authResult);
   } else {
@@ -842,29 +845,73 @@ router.get('/getPatientDocuments', async (req, res, next) => {
 });
 
 router.post('/plugin-update', async (req, res, next) => {
-  await routing('/plugin-update', updatePluginExecute, req, res, next, roll.pluginUpdate, req.body.data);
+  await routing(
+    '/plugin-update',
+    updatePluginExecute,
+    req,
+    res,
+    next,
+    roll.pluginUpdate,
+    req.body.data
+  );
 });
 
 router.post('/executeUpdate', async (req, res, next) => {
-  await routing('/executeUpdate', executeUpdate, req, res, next, roll.pluginUpdate, {updateObjects:req.body.data, executeUserId:getUserIdFromRequest(req) });
+  await routing(
+    '/executeUpdate',
+    executeUpdate,
+    req,
+    res,
+    next,
+    roll.pluginUpdate,
+    { updateObjects: req.body.data, executeUserId: getUserIdFromRequest(req) }
+  );
 });
 
 router.get('/getCaseIdAndDocIdList', async (req, res, next) => {
-  await routing('/getCaseIdAndDocIdList', getCaseIdAndDocIdList, req, res, next, roll.pluginUpdate);
+  await routing(
+    '/getCaseIdAndDocIdList',
+    getCaseIdAndDocIdList,
+    req,
+    res,
+    next,
+    roll.pluginUpdate
+  );
 });
 
 router.get('/getCaseIdAndHashList', async (req, res, next) => {
-  await routing('/getCaseIdAndHashList', getCaseIdAndHashList, req, res, next, roll.pluginUpdate);
+  await routing(
+    '/getCaseIdAndHashList',
+    getCaseIdAndHashList,
+    req,
+    res,
+    next,
+    roll.pluginUpdate
+  );
 });
 
 router.get('/getCaseIdAndCaseNoList', async (req, res, next) => {
-  await routing('/getCaseIdAndCaseNoList', getCaseIdAndCaseNoList, req, res, next, roll.pluginUpdate);
+  await routing(
+    '/getCaseIdAndCaseNoList',
+    getCaseIdAndCaseNoList,
+    req,
+    res,
+    next,
+    roll.pluginUpdate
+  );
 });
 
 router.get('/getDocumentsAndNameList', async (req, res, next) => {
-  await routing('/getDocumentsAndNameList', getDocumentsAndNameList, req, res, next, roll.pluginUpdate, 5);
+  await routing(
+    '/getDocumentsAndNameList',
+    getDocumentsAndNameList,
+    req,
+    res,
+    next,
+    roll.pluginUpdate,
+    5
+  );
 });
-
 
 /**
  * プラグイン用 end
