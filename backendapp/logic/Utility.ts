@@ -2,6 +2,7 @@ import { formatDateStr } from '../services/JsonToDatabase';
 import { logging, LOGTYPE } from './Logger';
 import crypto from 'crypto';
 import { ParseStream } from 'unzipper';
+import envVariables from '../config';
 
 export interface Obj {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -92,10 +93,13 @@ export const GetPatientHash = (birthday: Date | string, his_id: string) => {
     birthdayStr = formatDateStr(birthday.toString(), '');
   }
 
-  // his_id + 生年月日(yyyyMMdd)で生成
+  // his_id + 生年月日(yyyyMMdd) + ソルトで生成
   return crypto
     .createHash('sha256')
-    .update(`${his_id}${birthdayStr}`.replace(/\s+/g, ''), 'utf8')
+    .update(
+      `${his_id}${birthdayStr}${envVariables.hashSalt}`.replace(/\s+/g, ''),
+      'utf8'
+    )
     .digest('hex');
 };
 
@@ -112,3 +116,36 @@ export const streamPromise = async (stream: ParseStream) => {
 // 日付文字列判定
 export const isDateStr = (dateStr: string) =>
   !Number.isNaN(new Date(dateStr).getTime());
+
+// Jsonpointerの末尾に配列指定系の文字列が含まれているかを返す
+export const isPointerWithArray = (pointer: string) => {
+  if (pointer.endsWith('/-')) {
+    return true;
+  }
+  const match = pointer.match(/\/(\d+)$/);
+  if (match) {
+    return true;
+  }
+  return false;
+};
+
+// Jsonpointerの末尾から配列位置指定を取得する
+export const getPointerArrayNum = (pointer: string) => {
+  const match = pointer.match(/\/(\d+)$/);
+  if (match) {
+    return Number(match.slice(1));
+  }
+  return -1;
+};
+
+// Jsonpointerの末尾から配列位置指定を削除する
+export const getPointerTrimmed = (pointer: string) => {
+  if (pointer.endsWith('/-')) {
+    return pointer.slice(0, -2);
+  }
+  const match = pointer.match(/\/(\d+)$/);
+  if (match) {
+    return pointer.slice(0, -match.length);
+  }
+  return pointer;
+};
