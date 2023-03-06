@@ -149,7 +149,7 @@ CREATE TABLE IF NOT EXISTS jesgo_plugin
     last_updated timestamp with time zone,
     CONSTRAINT jesgo_plugin_pkey PRIMARY KEY (plugin_id, plugin_name),
     CONSTRAINT jesgo_plugin_uniquekey UNIQUE (plugin_name)
-)
+);
 
 
 CREATE VIEW view_latest_schema AS 
