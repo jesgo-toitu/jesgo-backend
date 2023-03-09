@@ -19,7 +19,10 @@ add boolean,
 edit boolean,
 remove boolean,
 data_manage boolean,
-system_manage boolean
+system_manage boolean,
+plugin_registerable boolean default false,
+plugin_executable_select boolean default false,
+plugin_executable_update boolean default false
 );
 
 CREATE TABLE IF NOT EXISTS jesgo_user
