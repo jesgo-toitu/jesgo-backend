@@ -17,6 +17,9 @@ import {
   changePassword,
   getUsernameFromRequest,
   getUserIdFromRequest,
+  getUserRollList,
+  saveUserRoll,
+  JesgoUserRoll,
 } from '../services/Users';
 import {
   deletePatient,
@@ -307,6 +310,108 @@ router.post('/editUser/', async (req, res, next) => {
       body.password,
       body.roll_id
     )
+      .then((result) => res.status(200).send(result))
+      .catch(next);
+  }
+});
+
+/**
+ * 権限一覧
+ */
+router.get('/getUserRollList', async (req, res, next) => {
+  logging(
+    LOGTYPE.DEBUG,
+    '呼び出し',
+    'router',
+    '/getUserRollList',
+    getUsernameFromRequest(req)
+  );
+  // 権限の確認
+  const authResult: ApiReturnObject = await checkAuth(
+    getToken(req),
+    roll.systemManage
+  );
+  if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
+    res.status(200).send(authResult);
+  } else {
+    if (authResult.body) {
+      getUserRollList('Setting')
+        .then((result) => res.status(200).send(result))
+        .catch(next);
+    }
+    // 権限が無い場合
+    else {
+      logging(
+        LOGTYPE.ERROR,
+        '権限エラー',
+        'router',
+        '/userlist',
+        getUsernameFromRequest(req)
+      );
+    }
+  }
+});
+/**
+ * 権限一覧(コンボボックス用)
+ */
+router.get('/getUserRollItemMaster', async (req, res, next) => {
+  logging(
+    LOGTYPE.DEBUG,
+    '呼び出し',
+    'router',
+    '/getUserRollItemMaster',
+    getUsernameFromRequest(req)
+  );
+  // 権限の確認
+  // ログイン権限あれば参照できるようにしておく
+  const authResult: ApiReturnObject = await checkAuth(
+    getToken(req),
+    roll.login
+  );
+  if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
+    res.status(200).send(authResult);
+  } else {
+    if (authResult.body) {
+      getUserRollList('ItemMaster')
+        .then((result) => res.status(200).send(result))
+        .catch(next);
+    }
+    // 権限が無い場合
+    else {
+      logging(
+        LOGTYPE.ERROR,
+        '権限エラー',
+        'router',
+        '/getUserRollItemMaster',
+        getUsernameFromRequest(req)
+      );
+    }
+  }
+});
+
+/**
+ * 権限設定更新
+ */
+router.post('/saveUserRoll', async (req, res, next) => {
+  logging(
+    LOGTYPE.DEBUG,
+    '呼び出し',
+    'router',
+    '/saveUserRoll',
+    getUsernameFromRequest(req)
+  );
+
+  // 権限の確認
+  const authResult: ApiReturnObject = await checkAuth(
+    getToken(req),
+    roll.systemManage
+  );
+  if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
+    res.status(200).send(authResult);
+  } else {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    const data: JesgoUserRoll[] = req.body.data as JesgoUserRoll[];
+    saveUserRoll(data)
       .then((result) => res.status(200).send(result))
       .catch(next);
   }

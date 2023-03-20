@@ -108,6 +108,8 @@ export interface localStorageObject {
 }
 
 interface rollAuth {
+  roll_id: number;
+  title: string;
   login: boolean;
   view: boolean;
   add: boolean;
@@ -118,7 +120,27 @@ interface rollAuth {
   plugin_registerable: boolean;
   plugin_executable_select: boolean;
   plugin_executable_update: boolean;
+  deleted: boolean;
 }
+
+export type JesgoUserRoll = {
+  roll_id: number;
+  title: string;
+  isNew?: boolean; // trueは新規作成したレコード
+
+  login: boolean;
+  view: boolean;
+  add: boolean;
+  edit: boolean;
+  remove: boolean;
+  data_manage: boolean;
+  system_manage: boolean;
+  plugin_registerable: boolean;
+  plugin_executable_select: boolean;
+  plugin_executable_update: boolean;
+
+  deleted: boolean;
+};
 
 export interface userObject extends dispUser {
   password: string;
@@ -135,6 +157,30 @@ export const roll = {
   pluginRegisterable: 'plugin_registerable',
   pluginSelect: 'plugin_executable_select',
   pluginUpdate: 'plugin_executable_update',
+};
+
+/**
+ * マスタに存在するroll_idか否か
+ * @param roll_id
+ * @returns
+ */
+const hasUserRollIdMaster = async (roll_id: number) => {
+  const dbAccess = new DbAccess();
+  try {
+    await dbAccess.connectWithConf();
+
+    const ret = (await dbAccess.query(
+      'SELECT COUNT(*) as cnt FROM jesgo_user_roll WHERE roll_id = $1',
+      [roll_id]
+    )) as { cnt: number }[];
+
+    return ret[0].cnt > 0;
+    // eslint-disable-next-line no-useless-catch
+  } catch (err) {
+    throw err;
+  } finally {
+    await dbAccess.end();
+  }
 };
 
 /**
@@ -184,7 +230,7 @@ export const signUpUser = async (
     }
   }
 
-  if (rollList.indexOf(roll_id) === -1) {
+  if ((await hasUserRollIdMaster(roll_id)) === false) {
     errorMessage.push(StaffErrorMessage.ROLL_ERROR);
   }
 
@@ -571,7 +617,7 @@ export const checkAuth = async (
     }
 
     const ret = (await dbAccess.query(
-      `SELECT ${authSql} FROM jesgo_user u JOIN jesgo_user_roll r ON u.roll_id = r.roll_id WHERE user_id = $1`,
+      `SELECT ${authSql} FROM jesgo_user u JOIN jesgo_user_roll r ON u.roll_id = r.roll_id WHERE user_id = $1 and (r.deleted = false or r.deleted IS NULL)`,
       [user.user_id]
     )) as object[];
     await dbAccess.end();
@@ -625,7 +671,7 @@ export const loginUser = async (
     };
   }
   const roll = (await dbAccess.query(
-    'SELECT login, view, add, edit, remove, plugin_registerable, plugin_executable_select, plugin_executable_update, data_manage, system_manage FROM jesgo_user_roll WHERE roll_id = $1',
+    'SELECT login, view, add, edit, remove, plugin_registerable, plugin_executable_select, plugin_executable_update, data_manage, system_manage FROM jesgo_user_roll WHERE roll_id = $1 and (deleted = false or deleted IS NULL)',
     [ret[0].roll_id]
   )) as rollAuth[];
   await dbAccess.end();
@@ -727,6 +773,7 @@ export interface dbRow {
   name: string;
   displayName: string;
   rollId: number;
+  rolltitle: string;
 }
 
 export interface searchUserRequest extends ParsedQs {
@@ -744,13 +791,188 @@ export const searchUser = async (): Promise<ApiReturnObject> => {
   await dbAccess.connectWithConf();
   const dbRows: dbRow[] = (await dbAccess.query(
     `SELECT 
-    user_id, name, display_name, roll_id
-    FROM jesgo_user
-    WHERE deleted = false and roll_id <> 999 and  name <> 'system' and name <> 'systemuser'
-    ORDER BY name;`
+    u.user_id, u.name, u.display_name, u.roll_id, m.title as rolltitle
+    FROM jesgo_user u LEFT JOIN jesgo_user_roll m
+    ON u.roll_id = m.roll_id
+    WHERE u.deleted = false and u.roll_id <> 999 and  u.name <> 'system' and u.name <> 'systemuser'
+    ORDER BY u.name;`
   )) as dbRow[];
   await dbAccess.end();
 
   logging(LOGTYPE.DEBUG, `rowLength = ${dbRows.length}`, 'Users', 'searchUser');
   return { statusNum: RESULT.NORMAL_TERMINATION, body: { data: dbRows } };
+};
+
+/**
+ * 権限一覧取得
+ * @returns
+ */
+export const getUserRollList = async (
+  mode: 'Setting' | 'ItemMaster'
+): Promise<ApiReturnObject> => {
+  logging(LOGTYPE.DEBUG, '呼び出し', 'Users', 'getUserRollList');
+
+  const dbAccess = new DbAccess();
+  try {
+    await dbAccess.connectWithConf();
+    const whereParams = [];
+    let whereSql = '(deleted IS NULL OR deleted = false) AND ';
+    if (mode === 'Setting') {
+      whereSql += `roll_id != all($1)`;
+      whereParams.push([0, 999]);
+    } else {
+      // TODO: 条件は確認必要
+      whereSql += `roll_id != all($1)`;
+      whereParams.push([0, 999]);
+    }
+
+    const roll = (await dbAccess.query(
+      `SELECT * FROM jesgo_user_roll WHERE ${whereSql} ORDER BY roll_id`,
+      whereParams
+    )) as rollAuth[];
+    await dbAccess.end();
+
+    logging(
+      LOGTYPE.DEBUG,
+      `rowLength = ${roll.length}`,
+      'Users',
+      'getUserRollList'
+    );
+
+    if (mode === 'Setting') {
+      // すべての権限情報を返す
+      return { statusNum: RESULT.NORMAL_TERMINATION, body: { data: roll } };
+    } else {
+      // roll_idとtitleのみ返す
+      const rollMaster = roll.map((p) => {
+        return { roll_id: p.roll_id, title: p.title };
+      });
+      return {
+        statusNum: RESULT.NORMAL_TERMINATION,
+        body: { data: rollMaster },
+      };
+    }
+  } catch (err) {
+    logging(LOGTYPE.ERROR, (err as Error).message, 'Users', 'getUserRollList');
+    return { statusNum: RESULT.ABNORMAL_TERMINATION, body: null };
+  }
+};
+
+/**
+ * ユーザ権限更新
+ */
+export const saveUserRoll = async (
+  userRollList: JesgoUserRoll[]
+): Promise<ApiReturnObject> => {
+  logging(LOGTYPE.DEBUG, '呼び出し', 'Users', 'saveUserRoll');
+
+  let result = RESULT.NORMAL_TERMINATION;
+
+  if (userRollList && userRollList.length > 0) {
+    if (
+      userRollList.find(
+        (p) => !(p.isNew && p.deleted) && (p.title == null || p.title === '')
+      )
+    ) {
+      logging(
+        LOGTYPE.ERROR,
+        '権限名が未設定のため保存スキップ',
+        'Users',
+        'saveUserRoll'
+      );
+      return { statusNum: RESULT.ABNORMAL_TERMINATION, body: null };
+    }
+  }
+
+  const baseRollId = 10000; // ユーザが追加した権限のroll_id開始番号
+
+  let currentRoll: JesgoUserRoll | undefined;
+
+  const dbAccess = new DbAccess();
+  try {
+    await dbAccess.connectWithConf();
+
+    if (userRollList && userRollList.length > 0) {
+      // 削除しようとしている権限が設定された利用者がいないかチェック
+      const deletedRollIds = userRollList
+        .filter((p) => p.deleted)
+        .map((roll) => roll.roll_id);
+      if (deletedRollIds.length > 0) {
+        const ret = (await dbAccess.query(
+          `SELECT user_id FROM jesgo_user WHERE roll_id = any($1) AND (deleted IS NULL OR deleted = false)`,
+          [deletedRollIds]
+        )) as { user_id: string }[];
+
+        if (ret.length > 0) {
+          logging(
+            LOGTYPE.ERROR,
+            '削除対象の権限が使用中のため保存スキップ',
+            'Users',
+            'saveUserRoll'
+          );
+          result = RESULT.ABNORMAL_TERMINATION;
+          return { statusNum: result, body: null };
+        }
+      }
+    }
+
+    if (userRollList && userRollList.length > 0) {
+      await dbAccess.query('BEGIN');
+      for (const roll of userRollList) {
+        currentRoll = roll;
+
+        let sqlQuery = '';
+        const params: any[] = [
+          roll.title,
+          roll.login,
+          roll.view,
+          roll.add,
+          roll.edit,
+          roll.remove,
+          roll.data_manage,
+          roll.system_manage,
+          roll.plugin_registerable,
+          roll.plugin_executable_select,
+          roll.plugin_executable_update,
+          roll.deleted,
+        ];
+        if (roll.isNew && !roll.deleted) {
+          // 新規レコードはINSERT
+          sqlQuery = `INSERT INTO jesgo_user_roll (roll_id, title, login, view, add, edit, remove, data_manage, system_manage
+            , plugin_registerable, plugin_executable_select, plugin_executable_update, deleted)
+            VALUES ((SELECT (case when max(roll_id) >= ${baseRollId} then max(roll_id) else ${
+            baseRollId - 1
+          } end) + 1 FROM jesgo_user_roll),
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`;
+        } else if (!roll.isNew) {
+          // 既存レコードはUPDATE
+          sqlQuery = `UPDATE jesgo_user_roll SET
+          title = $2, login = $3, view = $4, add = $5, edit = $6, remove = $7, data_manage = $8, system_manage = $9,
+          plugin_registerable = $10, plugin_executable_select = $11, plugin_executable_update = $12, deleted = $13
+          WHERE roll_id = $1`;
+
+          params.unshift(roll.roll_id);
+        }
+
+        await dbAccess.query(sqlQuery, params);
+      }
+      await dbAccess.query('COMMIT');
+      logging(LOGTYPE.INFO, 'jesgo_user_roll更新完了', 'Users', 'saveUserRoll');
+    }
+
+    return { statusNum: result, body: null };
+  } catch (err: any) {
+    logging(
+      LOGTYPE.ERROR,
+      `[roll_id=${currentRoll ? currentRoll.roll_id : ''}]${
+        (err as Error)?.message
+      }`,
+      'Users',
+      'saveUserRoll'
+    );
+    result = RESULT.ABNORMAL_TERMINATION;
+    return { statusNum: result, body: null };
+  } finally {
+    await dbAccess.end();
+  }
 };
