@@ -12,8 +12,7 @@ call C:\jesgo\scripts\env_db.bat
 rem テーブル更新
 call :psqlroutine alter_jesgo_user_roll.sql jesgo_user_rollテーブル更新成功
 
-pause
-exit
+exit /b
 
 
 
