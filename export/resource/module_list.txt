@@ -3,6 +3,9 @@
 @mapbox
 abbrev
 accepts
+acorn
+acorn-globals
+acorn-jsx
 ansi-regex
 append-field
 aproba
@@ -63,6 +66,7 @@ is-promise
 isarray
 isexe
 jsonfile
+jsonpointer
 jsonwebtoken
 jwa
 jws
@@ -132,6 +136,7 @@ unpipe
 unzipper
 util-deprecate
 utils-merge
+uuidjs
 vary
 which
 wide-align
