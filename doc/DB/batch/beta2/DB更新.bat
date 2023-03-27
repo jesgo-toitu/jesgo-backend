@@ -13,8 +13,8 @@ rem テーブル更新
 call :psqlroutine jesgo_plugin.sql jesgo_pluginテーブル作成成功
 call :psqlroutine jesgo_user_roll.sql jesgo_user_rollテーブル更新成功
 call :psqlroutine jesgo_schema_patch.sql jesgo_document_schemaテーブル更新成功
-pause
-exit
+
+exit /b
 
 
 

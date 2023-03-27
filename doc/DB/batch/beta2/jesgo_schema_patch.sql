@@ -1,3 +1,3 @@
--- /schema/OV/stagingã®titleã«TMNã®è¡¨è¨˜ãŒæ®‹ã£ã¦ã„ãŸã®ã§updateã§å¯¾å¿œã™ã‚‹.
+-- /schema/OV/staging‚Ìtitle‚ÉTMN‚Ì•\‹L‚ªc‚Á‚Ä‚¢‚½‚Ì‚Åupdate‚Å‘Î‰‚·‚é.
 UPDATE jesgo_document_schema SET document_schema = replace(document_schema::text, 'TMN', 'TNM')::json
 WHERE schema_id_string = '/schema/OV/staging';
