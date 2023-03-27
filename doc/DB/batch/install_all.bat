@@ -1,5 +1,7 @@
 @echo on
 
+pushd %~dp0
+
 cd .\beta1
 call DB更新.bat
 cd ..\
@@ -11,5 +13,3 @@ cd ..\
 cd .\beta3
 call DB更新.bat
 cd ..\
-
-pause
