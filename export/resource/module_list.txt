@@ -3,6 +3,9 @@
 @mapbox
 abbrev
 accepts
+acorn
+acorn-globals
+acorn-jsx
 ansi-regex
 append-field
 aproba
@@ -41,6 +44,7 @@ ee-first
 emoji-regex
 encodeurl
 escape-html
+esm
 etag
 express
 express-promise-router
@@ -63,6 +67,7 @@ is-promise
 isarray
 isexe
 jsonfile
+jsonpointer
 jsonwebtoken
 jwa
 jws
@@ -132,6 +137,7 @@ unpipe
 unzipper
 util-deprecate
 utils-merge
+uuidjs
 vary
 which
 wide-align

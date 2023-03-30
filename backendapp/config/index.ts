@@ -7,6 +7,7 @@ export type EnvVariables = {
   host: string;
   port: number;
   passwordSalt: string;
+  hashSalt: string;
   privateKey: string;
   publicKey: string;
 };
@@ -32,6 +33,7 @@ const envVariables = (): EnvVariables => {
     host: configJson['host'],
     port: configJson['port'],
     passwordSalt: configJson['passwordSalt'],
+    hashSalt: configJson['hashSalt'],
     privateKey: _privateKey,
     publicKey: _publicKey,
   };

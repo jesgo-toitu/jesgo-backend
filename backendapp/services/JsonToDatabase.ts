@@ -3,15 +3,21 @@ import { readFileSync, readdirSync, rename } from 'fs';
 import { ApiReturnObject, RESULT } from '../logic/ApiCommon';
 import lodash from 'lodash';
 import { logging, LOGTYPE } from '../logic/Logger';
-import { Extract, ParseStream } from 'unzipper';
+import { Extract } from 'unzipper';
+import UUID from 'uuidjs';
 import * as fs from 'fs';
 import fse from 'fs-extra';
 import * as path from 'path';
-import { Const, escapeText, isDateStr, jesgo_tagging } from '../logic/Utility';
-
-// 定数
-// 一時展開用パス
-const dirPath = './tmp';
+import {
+  Const,
+  cutTempPath,
+  isDateStr,
+  escapeText,
+  formatDate,
+  formatTime,
+  jesgo_tagging,
+  streamPromise,
+} from '../logic/Utility';
 
 //インターフェース
 
@@ -260,30 +266,6 @@ export const formatDateStr = (dtStr: string, separator: string) => {
   }
 };
 
-// 日付(Date形式)をyyyy/MM/ddなどの形式に変換
-export const formatDate = (dateObj: Date, separator = '') => {
-  try {
-    const y = dateObj.getFullYear();
-    const m = `00${dateObj.getMonth() + 1}`.slice(-2);
-    const d = `00${dateObj.getDate()}`.slice(-2);
-    return `${y}${separator}${m}${separator}${d}`;
-  } catch {
-    return '';
-  }
-};
-
-// 時刻(Date形式)をHH:mm:ssの形式に変換
-const formatTime = (dateObj: Date, separator = '') => {
-  try {
-    const h = `00${dateObj.getHours()}`.slice(-2);
-    const m = `00${dateObj.getMinutes()}`.slice(-2);
-    const s = `00${dateObj.getSeconds()}`.slice(-2);
-    return `${h}${separator}${m}${separator}${s}`;
-  } catch {
-    return '';
-  }
-};
-
 /**
  * 入力された日付の前日を取得
  * @param date 入力日
@@ -312,20 +294,6 @@ export const undefined2Null = (num: number | undefined): string => {
     return 'NULL';
   }
   return num.toString();
-};
-
-/**
- * 一時展開用のディレクトリパスを削除したファイルパスを返す
- * もともと一時展開用のディレクトリパスが付いていなければファイルパスをそのまま返す
- * @param tempPath 一時展開用のディレクトリパス
- * @param filePath ファイルパス
- * @returns 一時展開用のディレクトリパスを削除したファイルパス
- */
-export const cutTempPath = (tempPath: string, filePath: string): string => {
-  if (filePath.startsWith(tempPath)) {
-    return filePath.slice(tempPath.length);
-  }
-  return filePath;
 };
 
 /**
@@ -373,6 +341,7 @@ const getOldSchema = async (stringId: string): Promise<oldSchema[]> => {
     for (let i = 0; i < ret.length; i += 1) {
       ret[i].valid_from = new Date(ret[i].valid_from.getTime() - offset);
       if (ret[i].valid_until) {
+        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
         ret[i].valid_until = new Date(ret[i].valid_until!.getTime() - offset);
       }
     }
@@ -455,6 +424,7 @@ const hasVersionUpdateError = (
 const makeInsertQuery = (
   schemaInfoList: oldSchema[],
   json: JSONSchema7,
+  dirPath: string,
   fileName: string,
   errorMessages: string[]
 ): [string, string[], string[]] => {
@@ -464,6 +434,7 @@ const makeInsertQuery = (
   let errorFlag = false;
 
   const latestSchemaInfo = schemaInfoList[0]; // 有効フラグ関係なく現在の最新スキーマ(バージョンチェック用)
+  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
   const validSchemaInfo = schemaInfoList.find((p) => !p.hidden)!; // 有効な現在の最新スキーマ
 
   let subQuery = ['', ''];
@@ -757,7 +728,8 @@ const makeInsertQuery = (
 
 const fileListInsert = async (
   fileList: string[],
-  errorMessages: string[]
+  errorMessages: string[],
+  dirPath: string
 ): Promise<number> => {
   logging(LOGTYPE.DEBUG, `呼び出し`, 'JsonToDatabase', 'fileListInsert');
   let updateNum = 0;
@@ -849,6 +821,7 @@ const fileListInsert = async (
     const [query, values, subqueryValues] = makeInsertQuery(
       oldJsonData,
       jsons[i],
+      dirPath,
       fileList[i],
       errorMessages
     );
@@ -1250,7 +1223,7 @@ export const jsonToSchema = async (): Promise<ApiReturnObject> => {
     await dbAccess.connectWithConf();
     await dbAccess.query('BEGIN');
 
-    await fileListInsert(fileList, []);
+    await fileListInsert(fileList, [], dirPath);
 
     await schemaListUpdate();
 
@@ -1269,20 +1242,13 @@ export const jsonToSchema = async (): Promise<ApiReturnObject> => {
     await dbAccess.end();
   }
 };
-const streamPromise = async (stream: ParseStream) => {
-  return new Promise((resolve, reject) => {
-    stream.on('close', () => {
-      resolve('close');
-    });
-    stream.on('error', (error) => {
-      reject(error);
-    });
-  });
-};
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const uploadZipFile = async (data: any): Promise<ApiReturnObject> => {
   logging(LOGTYPE.DEBUG, '呼び出し', 'JsonToDatabase', 'uploadZipFile');
+  // 一時展開用パス
+  // eslint-disable-next-line
+  const dirPath = `./tmp/${UUID.generate()}`;
   // eslint-disable-next-line
   const filePath: string = data.path;
   const errorMessages: string[] = [];
@@ -1297,7 +1263,7 @@ export const uploadZipFile = async (data: any): Promise<ApiReturnObject> => {
         break;
       case '.json':
         if (!fs.existsSync(dirPath)) {
-          fs.mkdirSync(dirPath);
+          fs.mkdirSync(dirPath, { recursive: true });
         }
         // eslint-disable-next-line
         fs.copyFileSync(filePath, path.join(dirPath, data.originalname));
@@ -1334,7 +1300,7 @@ export const uploadZipFile = async (data: any): Promise<ApiReturnObject> => {
 
     await dbAccess.connectWithConf();
 
-    const updateNum = await fileListInsert(fileList, errorMessages);
+    const updateNum = await fileListInsert(fileList, errorMessages, dirPath);
 
     // スキーマが1件以上新規登録、更新された場合のみ関係性のアップデートを行う
     if (updateNum > 0) {
