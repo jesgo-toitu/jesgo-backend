@@ -1,47 +1,53 @@
-alter table jesgo_user_roll add column if not exists plugin_registerable boolean default false;
-alter table jesgo_user_roll add column if not exists plugin_executable_select boolean default false;
-alter table jesgo_user_roll add column if not exists plugin_executable_update boolean default false;
+DO $$ BEGIN
+	IF NOT EXISTS (SELECT * FROM information_schema.columns WHERE table_name = 'jesgo_user_roll' AND column_name = 'plugin_registerable') THEN
+		alter table jesgo_user_roll add column if not exists plugin_registerable boolean default false;
+		alter table jesgo_user_roll add column if not exists plugin_executable_select boolean default false;
+		alter table jesgo_user_roll add column if not exists plugin_executable_update boolean default false;
+		
+		--ƒVƒXƒeƒ€ŠÇ—ŽÒ
+		update jesgo_user_roll set
+			plugin_registerable = true,
+			plugin_executable_select = true,
+			plugin_executable_update = true
+		where roll_id = 0;
 
---ã‚·ã‚¹ãƒ†ãƒ ç®¡ç†è€…
-update jesgo_user_roll set
-	plugin_registerable = true,
-	plugin_executable_select = true,
-	plugin_executable_update = true
-where roll_id = 0;
+		--ƒVƒXƒeƒ€ƒIƒyƒŒ[ƒ^[
+		update jesgo_user_roll set
+			plugin_registerable = false,
+			plugin_executable_select = true,
+			plugin_executable_update = true
+		where roll_id = 1;
 
---ã‚·ã‚¹ãƒ†ãƒ ã‚ªãƒšãƒ¬ãƒ¼ã‚¿ãƒ¼
-update jesgo_user_roll set
-	plugin_registerable = false,
-	plugin_executable_select = true,
-	plugin_executable_update = true
-where roll_id = 1;
-
---ä¸Šç´šãƒ¦ãƒ¼ã‚¶
-update jesgo_user_roll set
-	plugin_registerable = false,
-	plugin_executable_select = true,
-	plugin_executable_update = true
-where roll_id = 100;
-
-
---ä¸€èˆ¬ãƒ¦ãƒ¼ã‚¶
-update jesgo_user_roll set
-	plugin_registerable = false,
-	plugin_executable_select = true,
-	plugin_executable_update = false
-where roll_id = 101;
+		--ã‹‰ƒ†[ƒU
+		update jesgo_user_roll set
+			plugin_registerable = false,
+			plugin_executable_select = true,
+			plugin_executable_update = true
+		where roll_id = 100;
 
 
---ãƒ­ã‚°ç”¨ãƒ¦ãƒ¼ã‚¶
-update jesgo_user_roll set
-	plugin_registerable = false,
-	plugin_executable_select = false,
-	plugin_executable_update = false
-where roll_id = 999;
+		--ˆê”Êƒ†[ƒU
+		update jesgo_user_roll set
+			plugin_registerable = false,
+			plugin_executable_select = true,
+			plugin_executable_update = false
+		where roll_id = 101;
 
---é€€è·è€…
-update jesgo_user_roll set
-	plugin_registerable = false,
-	plugin_executable_select = false,
-	plugin_executable_update = false
-where roll_id = 1000;
+
+		--ƒƒO—pƒ†[ƒU
+		update jesgo_user_roll set
+			plugin_registerable = false,
+			plugin_executable_select = false,
+			plugin_executable_update = false
+		where roll_id = 999;
+
+		--‘ÞEŽÒ
+		update jesgo_user_roll set
+			plugin_registerable = false,
+			plugin_executable_select = false,
+			plugin_executable_update = false
+		where roll_id = 1000;
+	ELSE
+		RAISE NOTICE 'jesgo_user_roll‚Éplugin_registerable‚ª’Ç‰ÁÏ‚Ý‚Ì‚½‚ßƒXƒLƒbƒv';
+	END IF;
+END $$;
