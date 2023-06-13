@@ -90,13 +90,20 @@ const generateDocument = (
   if (parentDoc) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let pushedObject: any;
+
+    // 文書がオブジェクトの場合 jesgo:document_id プロパティにドキュメントid仕込む
+    const documentBody = parentDoc?.document;
+    if (Object.prototype.toString.call(documentBody) === '[object Object]') {
+      (documentBody as any)['jesgo:document_id'] = parentDoc.document_id;
+    }
+
     // ユニークな文書か否かで処理を分ける
     if (parentDoc.uniqueness) {
       // unique=trueの場合、基本的にはドキュメントをそのままセットする
       // 何かの手違いで複数作成されていた場合は配列にする
       // eslint-disable-next-line no-prototype-builtins
       if ((baseObject as object).hasOwnProperty(parentDoc.title)) {
-        pushedObject = parentDoc.document;
+        // 何かの手違いで複数作成されていた場合は配列にする
         if (!Array.isArray(baseObject[parentDoc.title])) {
           // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           const tmp = baseObject[parentDoc.title]; // 既存ドキュメントを一旦退避
@@ -105,13 +112,13 @@ const generateDocument = (
           // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
           baseObject[parentDoc.title].push(tmp);
           // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
-          baseObject[parentDoc.title].push(pushedObject);
+          baseObject[parentDoc.title].push(documentBody);
         } else {
           // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
-          baseObject[parentDoc.title].push(pushedObject);
+          baseObject[parentDoc.title].push(documentBody);
         }
       } else {
-        baseObject[parentDoc.title] = parentDoc.document;
+        baseObject[parentDoc.title] = documentBody;
       }
     } else {
       // unique=falseの場合、必ず配列にする
@@ -134,9 +141,8 @@ const generateDocument = (
         }
       }
 
-      pushedObject = parentDoc.document;
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
-      baseObject[parentDoc.title].push(pushedObject);
+      baseObject[parentDoc.title].push(documentBody);
     }
 
     // 子ドキュメント取得
@@ -1183,6 +1189,11 @@ export const updatePluginExecute = async (updateObjects: updateObjects) => {
         const documentId = documents[index].document_id;
         const document = documents[index].document;
         for (const key in updateObject.target) {
+          // Plugin用予約プロパティであるため /jesgo:document_id があったらスキップする
+          if (key === '/jesgo:document_id') {
+            continue;
+          }
+
           const record = updateObject.target[key];
           const baseDocument = lodash.cloneDeep(document);
           const getKey = isPointerWithArray(key) ? getPointerTrimmed(key) : key;
