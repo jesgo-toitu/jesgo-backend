@@ -1,6 +1,6 @@
 {
     "database": "jesgo_db",
-    "user": "jesgo",
+    "user": "postgres",
     "password": "12345678",
     "host": "localhost",
     "port": 5432,
