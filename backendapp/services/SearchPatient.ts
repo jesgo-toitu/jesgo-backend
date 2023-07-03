@@ -537,7 +537,6 @@ export const searchPatients = async (
     // エラー有無(ここのみスキーマではなくドキュメントを見る)
     if (document.includes('jesgo:error')) {
       userData.registration.push('has_error');
-      userData.registration.push('has_error');
     }
 
     // 腫瘍登録番号登録有無
