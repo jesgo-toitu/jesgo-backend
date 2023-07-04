@@ -297,6 +297,7 @@ export const searchPatients = async (
   const caseIdList: number[] = [];
   for (let index = 0; index < dbRows.length; index++) {
     const dbRow: dbRow = dbRows[index];
+    const document = JSON.stringify(dbRow.document);
     const docSchema = JSON.stringify(dbRow.document_schema);
     const caseId: number = dbRow.case_id;
     let rowIndex = caseIdList.indexOf(caseId);
@@ -533,6 +534,11 @@ export const searchPatients = async (
       userData.status.push('recurrence');
     }
 
+    // エラー有無(ここのみスキーマではなくドキュメントを見る)
+    if (document.includes('jesgo:error')) {
+      userData.registration.push('has_error');
+    }
+
     // 腫瘍登録番号登録有無
     if (docSchema.includes(jesgo_tagging(Const.JESGO_TAG.REGISTRABILITY))) {
       const registrability =
@@ -633,13 +639,30 @@ export const searchPatients = async (
 
     // 登録
     if (userData.registration.length > 0) {
-      // 1つ以上の値がある場合は、「拒否」、「未」、「済」の優先順で一番優先された物を値とする
-      const orderRule = ['decline', 'not_completed', 'completed'];
-      userData.registration = [
-        userData.registration.sort(
-          (a, b) => orderRule.indexOf(a) - orderRule.indexOf(b)
-        )[0],
-      ];
+      let hasError = false;
+      // has_errorがある場合は一旦退避
+      if (userData.registration.indexOf('has_error') !== -1) {
+        hasError = true;
+        userData.registration = userData.registration.filter(
+          (p) => p !== 'has_error'
+        );
+      }
+
+      // has_errorを削除しても配列に要素があるかを確認
+      if (userData.registration.length > 0) {
+        // 1つ以上の値がある場合は、「拒否」、「未」、「済」の優先順で一番優先された物を値とする
+        const orderRule = ['decline', 'not_completed', 'completed'];
+        userData.registration = [
+          userData.registration.sort(
+            (a, b) => orderRule.indexOf(a) - orderRule.indexOf(b)
+          )[0],
+        ];
+      }
+
+      // もともとhas_errorがあった場合は配列に再追加する
+      if (hasError) {
+        userData.registration.push('has_error');
+      }
     }
     // 値がない場合は何も表示しない
 
