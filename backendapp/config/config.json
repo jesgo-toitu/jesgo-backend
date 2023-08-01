@@ -1,7 +1,7 @@
 {
     "database": "jesgo_db",
-    "user": "postgres",
-    "password": "12345678",
+    "user": "jesgo",
+    "password": "jesgo0",
     "host": "localhost",
     "port": 5432,
     "passwordSalt": "abcde",

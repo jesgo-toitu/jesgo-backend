@@ -88,9 +88,6 @@ const generateDocument = (
 ) => {
   const parentDoc = srcDocList.find((p) => p.document_id === docId);
   if (parentDoc) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let pushedObject: any;
-
     // 文書がオブジェクトの場合 jesgo:document_id プロパティにドキュメントid仕込む
     const documentBody = parentDoc?.document;
     if (Object.prototype.toString.call(documentBody) === '[object Object]') {
@@ -105,15 +102,11 @@ const generateDocument = (
       if ((baseObject as object).hasOwnProperty(parentDoc.title)) {
         // 何かの手違いで複数作成されていた場合は配列にする
         if (!Array.isArray(baseObject[parentDoc.title])) {
+          // 要素を配列として再構成
           // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-          const tmp = baseObject[parentDoc.title]; // 既存ドキュメントを一旦退避
-          baseObject[parentDoc.title] = [];
-
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
-          baseObject[parentDoc.title].push(tmp);
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
-          baseObject[parentDoc.title].push(documentBody);
+          baseObject[parentDoc.title] = [ baseObject[parentDoc.title], documentBody ];
         } else {
+          // 既に配列なのでpushする
           // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
           baseObject[parentDoc.title].push(documentBody);
         }
@@ -122,23 +115,10 @@ const generateDocument = (
       }
     } else {
       // unique=falseの場合、必ず配列にする
-      if (
-        // eslint-disable-next-line no-prototype-builtins
-        !(baseObject as object).hasOwnProperty(parentDoc.title) ||
-        !Array.isArray(baseObject[parentDoc.title])
-      ) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        let tmp: any;
-        if (baseObject[parentDoc.title]) {
-          // 値があれば一旦退避
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-          tmp = baseObject[parentDoc.title];
-        }
-        baseObject[parentDoc.title] = [];
-        if (tmp) {
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
-          baseObject[parentDoc.title].push(tmp);
-        }
+      // eslint-disable-next-line no-prototype-builtins
+      if ( !(baseObject as object).hasOwnProperty(parentDoc.title) ) {
+        // 新規作成
+        baseObject[parentDoc.title] = []
       }
 
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
@@ -152,8 +132,8 @@ const generateDocument = (
           childDocId,
           srcDocList,
           // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-          pushedObject
-            ? (pushedObject as Obj)
+          documentBody
+            ? (documentBody as Obj)
             : (baseObject[parentDoc.title] as Obj)
         );
       });
@@ -1190,9 +1170,9 @@ export const updatePluginExecute = async (updateObjects: updateObjects) => {
         const document = documents[index].document;
         for (const key in updateObject.target) {
           // Plugin用予約プロパティであるため /jesgo:document_id があったらスキップする
-          if (key === '/jesgo:document_id') {
-            continue;
-          }
+          // if (key === '/jesgo:document_id') {
+          //   continue;
+          // }
 
           const record = updateObject.target[key];
           const baseDocument = lodash.cloneDeep(document);
