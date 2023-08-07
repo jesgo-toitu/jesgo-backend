@@ -1483,6 +1483,13 @@ export const getPatientDocuments = async (
   try {
     await dbAccess.connectWithConf();
     const dbRows = (await dbAccess.query(selectQuery, selectArg)) as dbRow[];
+
+    if (dbRows && dbRows.length > 0) {
+      dbRows.forEach((row) => {
+        deleteNullArrayObject(row.document);
+      });
+    }
+
     return { statusNum: RESULT.NORMAL_TERMINATION, body: dbRows };
   } catch (e) {
     logging(
