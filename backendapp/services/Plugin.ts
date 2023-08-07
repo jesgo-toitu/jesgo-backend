@@ -80,6 +80,35 @@ type caseNoRow = {
   caseNo: string;
 };
 
+/**
+ * Array内のnullを削除する
+ * @param srcDoc
+ */
+const deleteNullArrayObject = (srcDoc: Obj) => {
+  Object.entries(srcDoc).forEach((item) => {
+    const propName = item[0];
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    const val = item[1];
+    if (Array.isArray(val)) {
+      // nullや空文字のデータは除外
+      const filterResult = val.filter((p) => p != null && p !== '');
+      if (filterResult.length > 0) {
+        if (filterResult.every((p) => typeof p === 'object')) {
+          filterResult.forEach((item2) => {
+            deleteNullArrayObject(item2 as Obj);
+          });
+        }
+        srcDoc[propName] = filterResult;
+      } else {
+        // nullのデータのみだった場合はプロパティごと削除
+        delete srcDoc[propName];
+      }
+    } else if (typeof val === 'object') {
+      deleteNullArrayObject(val as object);
+    }
+  });
+};
+
 // ドキュメント生成
 const generateDocument = (
   docId: number,
@@ -90,6 +119,9 @@ const generateDocument = (
   if (parentDoc) {
     // 文書がオブジェクトの場合 jesgo:document_id プロパティにドキュメントid仕込む
     const documentBody = parentDoc?.document;
+    if (documentBody) {
+      deleteNullArrayObject(documentBody);
+    }
     if (Object.prototype.toString.call(documentBody) === '[object Object]') {
       (documentBody as any)['jesgo:document_id'] = parentDoc.document_id;
     }
@@ -104,7 +136,10 @@ const generateDocument = (
         if (!Array.isArray(baseObject[parentDoc.title])) {
           // 要素を配列として再構成
           // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-          baseObject[parentDoc.title] = [ baseObject[parentDoc.title], documentBody ];
+          baseObject[parentDoc.title] = [
+            baseObject[parentDoc.title],
+            documentBody,
+          ];
         } else {
           // 既に配列なのでpushする
           // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
@@ -116,9 +151,9 @@ const generateDocument = (
     } else {
       // unique=falseの場合、必ず配列にする
       // eslint-disable-next-line no-prototype-builtins
-      if ( !(baseObject as object).hasOwnProperty(parentDoc.title) ) {
+      if (!(baseObject as object).hasOwnProperty(parentDoc.title)) {
         // 新規作成
-        baseObject[parentDoc.title] = []
+        baseObject[parentDoc.title] = [];
       }
 
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
@@ -1448,6 +1483,13 @@ export const getPatientDocuments = async (
   try {
     await dbAccess.connectWithConf();
     const dbRows = (await dbAccess.query(selectQuery, selectArg)) as dbRow[];
+
+    if (dbRows && dbRows.length > 0) {
+      dbRows.forEach((row) => {
+        deleteNullArrayObject(row.document);
+      });
+    }
+
     return { statusNum: RESULT.NORMAL_TERMINATION, body: dbRows };
   } catch (e) {
     logging(
