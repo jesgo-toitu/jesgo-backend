@@ -534,7 +534,13 @@ const getRelationSchemaIds = async (schema_id_string: string) => {
     await dbAccess.connectWithConf();
 
     const inheritSchemaIds = (await dbAccess.query(
-      `SELECT schema_id, inherit_schema FROM view_latest_schema WHERE schema_id_string = $1 AND schema_id <> 0`,
+      `
+      SELECT schema_id, inherit_schema FROM view_latest_schema 
+      WHERE
+        schema_id_string SIMILAR TO replace($1, '*', '[^/]+')
+        AND
+        schema_id <> 0
+      `,
       [schema_id_string]
     )) as { schema_id: number; inherit_schema: number[] }[];
 
@@ -544,11 +550,13 @@ const getRelationSchemaIds = async (schema_id_string: string) => {
       inheritSchemaIds.forEach((item) => {
         schemaIds?.push(item.schema_id, ...item.inherit_schema);
       });
+
+      //  万が一生じうるスキーマ検出の重複を除去する
+      schemaIds = Array.from(new Set(schemaIds))
     }
   } finally {
     await dbAccess.end();
   }
-
   return schemaIds;
 };
 
