@@ -534,7 +534,13 @@ const getRelationSchemaIds = async (schema_id_string: string) => {
     await dbAccess.connectWithConf();
 
     const inheritSchemaIds = (await dbAccess.query(
-      `SELECT schema_id, inherit_schema FROM view_latest_schema WHERE schema_id_string = $1 AND schema_id <> 0`,
+      `
+      SELECT schema_id, inherit_schema FROM view_latest_schema 
+      WHERE
+        schema_id_string SIMILAR TO replace($1, '*', '[^/]+')
+        AND
+        schema_id <> 0
+      `,
       [schema_id_string]
     )) as { schema_id: number; inherit_schema: number[] }[];
 
@@ -544,11 +550,13 @@ const getRelationSchemaIds = async (schema_id_string: string) => {
       inheritSchemaIds.forEach((item) => {
         schemaIds?.push(item.schema_id, ...item.inherit_schema);
       });
+
+      //  万が一生じうるスキーマ検出の重複を除去する
+      schemaIds = Array.from(new Set(schemaIds))
     }
   } finally {
     await dbAccess.end();
   }
-
   return schemaIds;
 };
 
@@ -623,20 +631,31 @@ const getInitValues = async (
           info.initValue.target_schema_id = undefined; // 一旦クリア
           // target_schema_id_stringが指定されていた場合、DBからスキーマID(数値)を取得する
           if (info.initValue.target_schema_id_string) {
-            const targetSchemaIdList = await getRelationSchemaIds(
-              info.initValue.target_schema_id_string
-            );
-            if (targetSchemaIdList && targetSchemaIdList.length > 0) {
-              info.initValue.target_schema_id = targetSchemaIdList;
-            } else {
-              // 見つからない場合はエラー
+            if (!/^[a-zA-Z0-9_/\-\*]+$/.test(info.initValue.target_schema_id_string)) {
+              // target_schema_id_stringの文字列が不正な場合はエラー
               allowPush = false;
               errorMessages.push(
                 `[${cutTempPath(
                   dirPath,
                   info.path
-                )}] init()：target_schema_id_stringに、存在しないスキーマIDが設定されています。`
+                )}] init()：target_schema_id_stringに、利用できない文字が含まれています。`
+              )
+            } else {
+              const targetSchemaIdList = await getRelationSchemaIds(
+                info.initValue.target_schema_id_string
               );
+              if (targetSchemaIdList && targetSchemaIdList.length > 0) {
+                info.initValue.target_schema_id = targetSchemaIdList;
+              } else {
+                // 見つからない場合はエラー
+                allowPush = false;
+                errorMessages.push(
+                  `[${cutTempPath(
+                    dirPath,
+                    info.path
+                  )}] init()：target_schema_id_stringに、存在しないスキーマIDが設定されています。`
+                );
+              }  
             }
           }
 
