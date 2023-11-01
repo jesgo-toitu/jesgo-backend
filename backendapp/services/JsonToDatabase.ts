@@ -944,6 +944,7 @@ export const schemaListUpdate = async () => {
     const childSchemaList: number[] = [];
     const inheritSchemaList: number[] = [];
     let baseSchemaId: number | undefined;
+    // subschema
     if (row.sub_s != null) {
       for (let j = 0; j < row.sub_s.length; j++) {
         // ワイルドカードを含むかどうかで処理を分ける
@@ -958,7 +959,7 @@ export const schemaListUpdate = async () => {
             [searchId]
           )) as schemaId[];
           if (schemaIds.length > 0) {
-            subSchemaList.push(schemaIds[0].schema_id);
+            subSchemaList.push(...schemaIds.map((p) => p.schema_id));
           }
         } else {
           const schemaIds: schemaId[] = (await dbAccess.query(
@@ -971,6 +972,7 @@ export const schemaListUpdate = async () => {
         }
       }
     }
+    // child_schema
     if (row.child_s != null) {
       for (let k = 0; k < row.child_s.length; k++) {
         // ワイルドカードを含むかどうかで処理を分ける
@@ -985,7 +987,7 @@ export const schemaListUpdate = async () => {
             [searchId]
           )) as schemaId[];
           if (schemaIds.length > 0) {
-            childSchemaList.push(schemaIds[0].schema_id);
+            childSchemaList.push(...schemaIds.map((p) => p.schema_id));
           }
         } else {
           const schemaIds: schemaId[] = (await dbAccess.query(
