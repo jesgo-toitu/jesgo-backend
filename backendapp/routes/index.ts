@@ -26,7 +26,7 @@ import {
   searchPatientRequest,
   searchPatients,
 } from '../services/SearchPatient';
-import { uploadZipFile } from '../services/JsonToDatabase';
+import { repairChildSchema, uploadZipFile } from '../services/JsonToDatabase';
 import Router from 'express-promise-router';
 import {
   getCaseAndDocument,
@@ -1016,6 +1016,23 @@ router.get('/getDocumentsAndNameList', async (req, res, next) => {
     roll.pluginUpdate,
     5
   );
+});
+
+/**
+ * jesgo_document_schemaテーブルのsubschema、child_schemaを再更新するAPIを外部公開
+ */
+router.get('/repair-childschema/', async (req, res, next) => {
+  logging(
+    LOGTYPE.DEBUG,
+    '呼び出し',
+    'router',
+    '/repair-childschema',
+    getUsernameFromRequest(req)
+  );
+  
+  repairChildSchema()
+      .then((result) => res.status(200).send(result))
+      .catch(next);
 });
 
 /**

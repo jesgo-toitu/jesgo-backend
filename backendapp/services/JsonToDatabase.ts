@@ -1380,3 +1380,39 @@ export const uploadZipFile = async (data: any): Promise<ApiReturnObject> => {
     });
   }
 };
+
+/**
+ * subschema、child_schemaのみ更新
+ * @returns 
+ */
+export const repairChildSchema = async (): Promise<ApiReturnObject> => {
+  logging(LOGTYPE.DEBUG, `呼び出し`, 'JsonToDatabase', 'repairChildSchema');
+
+  try {
+    await dbAccess.connectWithConf();
+    await dbAccess.query('BEGIN');
+
+    await schemaListUpdate();
+
+    await dbAccess.query('COMMIT');
+    return {
+      statusNum: RESULT.NORMAL_TERMINATION,
+      body: 'subschema、child_schemaの更新に成功しました',
+    };
+  } catch (e) {
+    logging(
+      LOGTYPE.ERROR,
+      `${(e as Error).message}`,
+      'JsonToDatabase',
+      'repairChildSchema'
+    );
+    await dbAccess.query('ROLLBACK');
+    return {
+      statusNum: RESULT.ABNORMAL_TERMINATION,
+      body: 'subschema、child_schemaの更新に失敗しました',
+      error: (e as Error).message,
+    };
+  } finally {
+    await dbAccess.end();
+  }
+};
