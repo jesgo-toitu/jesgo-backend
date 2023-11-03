@@ -1473,14 +1473,19 @@ export const getPatientDocuments = async (
   type dbRow = {
     document_id: number;
     case_id: number;
+    his_id?: string;
+    date_of_birth?: string;
+    hash?: string;
     schema_id: string;
     document: JSON;
   };
 
-  let selectQuery = `SELECT d.document_id, d.case_id, s.schema_id_string as schema_id, d.document 
+  let selectQuery = `SELECT d.document_id, d.case_id, c.his_id, c.date_of_birth, s.schema_id_string as schema_id, d.document 
   FROM jesgo_document d JOIN jesgo_document_schema s 
   ON d.schema_primary_id = s.schema_primary_id 
-  WHERE deleted = false`;
+  JOIN jesgo_case c
+  ON c.case_id = d.case_id
+  WHERE d.deleted = false`;
   let argIndex = 0;
   const selectArg = [];
 
@@ -1502,10 +1507,18 @@ export const getPatientDocuments = async (
   try {
     await dbAccess.connectWithConf();
     const dbRows = (await dbAccess.query(selectQuery, selectArg)) as dbRow[];
-
+ 
     if (dbRows && dbRows.length > 0) {
       dbRows.forEach((row) => {
         deleteNullArrayObject(row.document);
+        // hashを取得して設定
+        if (row.date_of_birth && row.his_id) {
+          row.hash = GetPatientHash(row.date_of_birth, row.his_id)
+          delete row.his_id
+          delete row.date_of_birth
+        } else {
+          row.hash = ''
+        }
       });
     }
 
