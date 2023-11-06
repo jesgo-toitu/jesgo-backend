@@ -843,7 +843,7 @@ const fileListInsert = async (
 /**
  * DBに登録されているスキーマのsubschema, childschema情報をアップデートする
  */
-export const schemaListUpdate = async () => {
+export const schemaListUpdate = async (updateAll = false) => {
   logging(LOGTYPE.DEBUG, `呼び出し`, 'JsonToDatabase', 'schemaListUpdate');
 
   // 先に「子スキーマから指定した親スキーマの関係リスト」を逆にしたものを作成しておく
@@ -917,6 +917,7 @@ export const schemaListUpdate = async () => {
 
   type dbRow = {
     schema_id: number;
+    schema_primary_id: number;
     schema_id_string: string;
     sub_s: string[];
     child_s: string[];
@@ -928,14 +929,17 @@ export const schemaListUpdate = async () => {
   // selectでDBに保存されている各スキーマのschema_id,schema_string_id,subschema,childschema一覧を取得
   const dbRows: dbRow[] = (await dbAccess.query(
     `SELECT schema_id, 
+    schema_primary_id,
     schema_id_string, 
     document_schema->'jesgo:subschema' as sub_s, 
     document_schema->'jesgo:childschema' as child_s, 
     subschema_default as default_sub_s, 
     child_schema_default as default_child_s 
-    FROM view_latest_schema 
+    FROM ${updateAll ? 'jesgo_document_schema' : 'view_latest_schema'} 
     WHERE schema_id <> 0`
   )) as dbRow[];
+
+  let updateCount = 0;
 
   const candidateBaseSchemas = dbRows.slice(0);
   for (let i = 0; i < dbRows.length; i++) {
@@ -1067,9 +1071,13 @@ export const schemaListUpdate = async () => {
          , child_schema_default = '{${numArrayCast2Pg(newChildSchemaList)}}'`;
     }
 
-    query += ' WHERE schema_id = $1';
+    query += ' WHERE schema_primary_id = $1';
 
-    await dbAccess.query(query, [row.schema_id]);
+    updateCount += (await dbAccess.query(
+      query,
+      [row.schema_primary_id],
+      'update'
+    )) as number;
   }
 
   // スキーマの更新に合わせて検索用セレクトボックスも更新する
@@ -1077,6 +1085,8 @@ export const schemaListUpdate = async () => {
 
   // スキーマの更新に合わせてルートスキーマの内容も更新する
   await updateRootSchemaList();
+
+  return updateCount;
 };
 
 const updateRootSchemaList = async () => {
@@ -1383,7 +1393,7 @@ export const uploadZipFile = async (data: any): Promise<ApiReturnObject> => {
 
 /**
  * subschema、child_schemaのみ更新
- * @returns 
+ * @returns
  */
 export const repairChildSchema = async (): Promise<ApiReturnObject> => {
   logging(LOGTYPE.DEBUG, `呼び出し`, 'JsonToDatabase', 'repairChildSchema');
@@ -1392,12 +1402,14 @@ export const repairChildSchema = async (): Promise<ApiReturnObject> => {
     await dbAccess.connectWithConf();
     await dbAccess.query('BEGIN');
 
-    await schemaListUpdate();
+    const count = await schemaListUpdate(true);
 
     await dbAccess.query('COMMIT');
     return {
       statusNum: RESULT.NORMAL_TERMINATION,
-      body: 'subschema、child_schemaの更新に成功しました',
+      body: `subschema、child_schemaの更新に成功しました。(${
+        count ?? ''
+      }件の更新)`,
     };
   } catch (e) {
     logging(
