@@ -11,7 +11,15 @@ import {
   streamPromise,
 } from '../logic/Utility';
 import { ApiReturnObject, RESULT } from '../logic/ApiCommon';
-import { jesgoCaseDefine } from './Schemas';
+import {
+  getCaseAndDocument,
+  getSchemaTree,
+  jesgoCaseDefine,
+  jesgoDocumentObjDefine,
+  registrationCaseAndDocument,
+  SaveDataObjDefine,
+  treeSchema,
+} from './Schemas';
 import lodash from 'lodash';
 import { logging, LOGTYPE } from '../logic/Logger';
 import { readdirSync, rename } from 'fs';
@@ -37,11 +45,11 @@ export interface PackageDocumentRequest {
 
 // 1患者情報の定義
 export interface PatientItemDefine {
-  hash: string;
+  hash?: string;
   his_id?: string;
   date_of_birth?: string;
   name?: string;
-  decline: boolean;
+  decline?: boolean;
   documentList?: object[];
 }
 
@@ -552,7 +560,7 @@ const getRelationSchemaIds = async (schema_id_string: string) => {
       });
 
       //  万が一生じうるスキーマ検出の重複を除去する
-      schemaIds = Array.from(new Set(schemaIds))
+      schemaIds = Array.from(new Set(schemaIds));
     }
   } finally {
     await dbAccess.end();
@@ -631,7 +639,11 @@ const getInitValues = async (
           info.initValue.target_schema_id = undefined; // 一旦クリア
           // target_schema_id_stringが指定されていた場合、DBからスキーマID(数値)を取得する
           if (info.initValue.target_schema_id_string) {
-            if (!/^[a-zA-Z0-9_/\-\*]+$/.test(info.initValue.target_schema_id_string)) {
+            if (
+              !/^[a-zA-Z0-9_/\-\*]+$/.test(
+                info.initValue.target_schema_id_string
+              )
+            ) {
               // target_schema_id_stringの文字列が不正な場合はエラー
               allowPush = false;
               errorMessages.push(
@@ -639,7 +651,7 @@ const getInitValues = async (
                   dirPath,
                   info.path
                 )}] init()：target_schema_id_stringに、利用できない文字が含まれています。`
-              )
+              );
             } else {
               const targetSchemaIdList = await getRelationSchemaIds(
                 info.initValue.target_schema_id_string
@@ -655,7 +667,7 @@ const getInitValues = async (
                     info.path
                   )}] init()：target_schema_id_stringに、存在しないスキーマIDが設定されています。`
                 );
-              }  
+              }
             }
           }
 
@@ -930,6 +942,8 @@ type updateObject = {
   schema_id?: string;
   schema_ids: number[];
   target: Record<string, string | number>;
+  patient_info?: PatientItemDefine;
+  child_documents?: updateObject[];
 };
 
 type updateDocuments = {
@@ -1460,6 +1474,271 @@ export const executeUpdate = async (arg: {
   }
 };
 
+/**
+ * 患者情報の登録
+ * @param patInfo
+ */
+const registerPatientInfo = async (
+  patInfo: PatientItemDefine | undefined,
+  executeUserId: number
+) => {
+  if (patInfo == null) return undefined;
+
+  let case_id: number | undefined = undefined;
+
+  const dbAccess = new DbAccess();
+  try {
+    await dbAccess.connectWithConf();
+    const result = (await dbAccess.query(
+      `SELECT case_id FROM jesgo_case WHERE his_id = $1`,
+      [patInfo.his_id],
+      'select'
+    )) as { case_id?: number }[];
+    if (result.length === 0) {
+      // INSERT
+      case_id = Number(
+        await dbAccess.query(
+          `INSERT INTO jesgo_case (name, date_of_birth, his_id, sex, decline, registrant, last_updated, deleted)
+      VALUES ($1, $2, $3, 'F', false, $4, NOW(), false)`,
+          [patInfo.name, patInfo.date_of_birth, patInfo.his_id, executeUserId],
+          'insert'
+        )
+      );
+    } else {
+      // UPDATE
+      case_id = result[0].case_id;
+      await dbAccess.query(
+        `UPDATE jesgo_case SET name = $1, date_of_birth = $2, last_updated = NOW(), registrant = $3, deleted = false WHERE case_id = $4`,
+        [patInfo.name, patInfo.date_of_birth, executeUserId, case_id],
+        'update'
+      );
+    }
+  } catch (err) {
+    await dbAccess.rollback();
+    console.error(err);
+    logging(
+      LOGTYPE.ERROR,
+      `【エラー】${(err as Error).message}`,
+      'Plugin',
+      'registerPatientInfo'
+    );
+    case_id = undefined;
+  } finally {
+    await dbAccess.end();
+  }
+  return case_id;
+};
+
+/**
+ * 患者・ドキュメント情報インポート実行
+ * @param arg
+ * @returns
+ */
+export const importPluginExecute = async (arg: {
+  updateObjects: updateObjects;
+  executeUserId: number;
+}) => {
+  logging(LOGTYPE.DEBUG, '呼び出し', 'Plugin', 'importPluginExecute');
+
+  const { updateObjects, executeUserId } = arg;
+
+  if (!updateObjects) {
+    return { statusNum: RESULT.ABNORMAL_TERMINATION, body: undefined };
+  }
+
+  let case_id: number | undefined = undefined;
+  const updateDate = new Date().toLocaleString('ja-JP');
+
+  let tmpCaseId = 1;
+
+  const { objects } = updateObjects;
+
+  // ツリー構造のスキーマ一覧を取得しておく
+  let rootSchemaTree: treeSchema[] = [];
+  const schemaTreeRes = await getSchemaTree();
+  if (schemaTreeRes.body) {
+    rootSchemaTree = (
+      schemaTreeRes.body as {
+        treeSchema: treeSchema[];
+        errorMessages: string[];
+      }
+    ).treeSchema;
+  }
+
+  // 新規ドキュメント保存処理
+  for (const patItem of objects) {
+    // 初めに患者情報(jesgo_case)を登録する
+    case_id = await registerPatientInfo(patItem.patient_info, executeUserId);
+
+    if (case_id) {
+      // 既存のドキュメント取得
+      const loadedSaveData = (await getCaseAndDocument(case_id))
+        .body as SaveDataObjDefine;
+      loadedSaveData.jesgo_case.is_new_case = false;
+
+      const dbAccess = new DbAccess();
+      // ドキュメントの登録
+      try {
+        await dbAccess.connectWithConf();
+
+        const func = async (
+          targetSchema: treeSchema,
+          isRoot: boolean,
+          parentDoc?: jesgoDocumentObjDefine
+        ) => {
+          // 既存のドキュメントを取得
+          let document = loadedSaveData.jesgo_document.find((p) => {
+            if (isRoot) {
+              // ルートの場合はroot_orderも見る
+              return (
+                p.value.schema_id === targetSchema.schema_id &&
+                p.root_order > -1
+              );
+            } else if (parentDoc) {
+              // サブスキーマの場合は親ドキュメントに紐づけ済みのものを取得
+              const convertChildDocToSchemaId =
+                parentDoc.value.child_documents.map(
+                  (childId) =>
+                    loadedSaveData.jesgo_document.find(
+                      (a) => a.key.toString() === childId.toString()
+                    )?.value.schema_id
+                );
+              return (
+                p.value.schema_id === targetSchema.schema_id &&
+                convertChildDocToSchemaId.includes(p.value.schema_id)
+              );
+            }
+            // ここには来ない想定
+            return false;
+          });
+
+          if (!document) {
+            // ドキュメントが見つからない場合は新規作成
+            document = {
+              key: `K${tmpCaseId}`,
+              root_order: -1,
+              value: {
+                case_id: case_id?.toString() ?? '',
+                event_date: '',
+                child_documents: [],
+                document: {},
+                schema_id: -1,
+                schema_primary_id: -1,
+                schema_major_version: 1,
+                inherit_schema: [],
+                registrant: executeUserId,
+                readonly: false,
+                deleted: false,
+                last_updated: updateDate,
+              },
+              event_date_prop_name: '',
+              death_data_prop_name: '',
+              delete_document_keys: [],
+            };
+
+            tmpCaseId += 1;
+          }
+
+          if (
+            document.key.startsWith('K') &&
+            targetSchema.schema_id &&
+            targetSchema.schema_id !== 0
+          ) {
+            // 新規ドキュメント作成
+            if (isRoot) {
+              // 空のルートドキュメントの作成
+
+              // 作成済みのルートドキュメントを取得
+              const rootDocList = (await dbAccess.query(
+                `SELECT document_id, case_id, root_order
+              FROM jesgo_document WHERE case_id = $1 AND root_order > -1 AND deleted = false`,
+                [case_id]
+              )) as {
+                document_id: number;
+                case_id: number;
+                root_order: number;
+              }[];
+
+              // ルートの並び順設定
+              document.root_order =
+                rootDocList.length === 0
+                  ? 1
+                  : Math.max(...rootDocList.map((p) => Number(p.root_order))) +
+                    1;
+            }
+
+            const docVal = document.value;
+            docVal.schema_id = targetSchema.schema_id;
+            docVal.schema_primary_id = targetSchema.schema_primary_id;
+
+            loadedSaveData.jesgo_document.push(document);
+
+            // 子ドキュメントの場合は親のドキュメントに紐づける
+            if (!isRoot && parentDoc) {
+              parentDoc.value.child_documents.push(document.key);
+            }
+          }
+
+          // サブスキーマの作成
+          if (targetSchema.subschema.length > 0) {
+            for (const targetSubschema of targetSchema.subschema) {
+              await func(targetSubschema, false, document);
+            }
+          }
+        };
+
+        const rootSchemaInfo = rootSchemaTree.find(
+          (p) => p.schema_id_string === patItem.schema_id
+        );
+        // トップレベルのスキーマがルートスキーマだった場合に作成する
+        if (rootSchemaInfo) {
+          await func(rootSchemaInfo, true);
+        }
+
+        // INSERT処理は既存の保存処理に任せる
+        const insertResult = await registrationCaseAndDocument(loadedSaveData);
+
+        if (insertResult.statusNum === RESULT.NORMAL_TERMINATION) {
+          // objects[0].target
+        }
+      } catch (e) {
+        throw e as Error;
+      } finally {
+        await dbAccess.end();
+      }
+    }
+  }
+
+  try {
+    // await dbAccess.connectWithConf();
+
+    const checkList: updateCheckObject[] = [];
+    const updateList: updateCheckObject[] = [];
+    for (let index = 0; index < objects.length; index++) {
+      const updateObject = objects[index];
+    }
+
+    return {
+      statusNum: RESULT.NORMAL_TERMINATION,
+      body: { his_id: 1, patient_name: 'aiueo', checkList, updateList },
+    };
+  } catch (e) {
+    console.error(e);
+    logging(
+      LOGTYPE.ERROR,
+      `【エラー】${(e as Error).message}`,
+      'Plugin',
+      'updatePluginExecute'
+    );
+    return {
+      statusNum: RESULT.ABNORMAL_TERMINATION,
+      body: (e as Error).message,
+    };
+  } finally {
+    // await dbAccess.end();
+  }
+};
+
 export interface getPatientDocumentRequest extends ParsedQs {
   caseId?: string;
   schemaIds?: string;
@@ -1507,17 +1786,17 @@ export const getPatientDocuments = async (
   try {
     await dbAccess.connectWithConf();
     const dbRows = (await dbAccess.query(selectQuery, selectArg)) as dbRow[];
- 
+
     if (dbRows && dbRows.length > 0) {
       dbRows.forEach((row) => {
         deleteNullArrayObject(row.document);
         // hashを取得して設定
         if (row.date_of_birth && row.his_id) {
-          row.hash = GetPatientHash(row.date_of_birth, row.his_id)
-          delete row.his_id
-          delete row.date_of_birth
+          row.hash = GetPatientHash(row.date_of_birth, row.his_id);
+          delete row.his_id;
+          delete row.date_of_birth;
         } else {
-          row.hash = ''
+          row.hash = '';
         }
       });
     }

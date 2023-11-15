@@ -38,6 +38,7 @@ export type JesgoDocumentSchema = {
 
 export type schemaRecord = {
   schema_id: number;
+  schema_primary_id: number;
   schema_id_string: string;
   title: string;
   subtitle: string;
@@ -62,6 +63,8 @@ export type schemaRecord = {
 
 export type treeSchema = {
   schema_id: number;
+  schema_primary_id: number;
+  schema_id_string: string;
   schema_title: string;
   subschema: treeSchema[];
   childschema: treeSchema[];
@@ -343,6 +346,8 @@ export const schemaRecord2SchemaTree = (
 
   return {
     schema_id: schemaRecord.schema_id,
+    schema_primary_id: schemaRecord.schema_primary_id,
+    schema_id_string: schemaRecord.schema_id_string,
     schema_title:
       schemaRecord.title +
       (schemaRecord.subtitle.length > 0 ? ' ' + schemaRecord.subtitle : ''),
@@ -648,7 +653,7 @@ export const registrationCaseAndDocument = async (
             childIndex < childDocumentsList.length;
             childIndex++
           ) {
-            const childDocumentId = childDocumentsList[childIndex];
+            const childDocumentId = childDocumentsList[childIndex].toString();
 
             // 仮IDかどうかのチェック
             if (childDocumentId.startsWith('K')) {

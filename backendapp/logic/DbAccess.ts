@@ -52,13 +52,27 @@ export class DbAccess {
     query: string,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     parameters: any[] = [],
-    queryType: 'update' | 'select' = 'select'
+    queryType: 'insert' | 'update' | 'select' = 'select'
   ): Promise<unknown> {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-return
     const result = await this.client.query(query, parameters);
 
-    // updateの場合は更新された行数を返す。selectはselect結果
-    return queryType === 'update' ? result.rowCount : result.rows;
+    if (queryType === 'update') {
+      // updateの場合は更新された行数を返す
+      return result.rowCount;
+    } else if (queryType === 'insert') {
+      // insertの場合はPK
+
+      const lastId = await this.client.query(`SELECT LASTVAL() as lastval`);
+      if (lastId.rows && lastId.rows.length > 0) {
+        return Number((lastId.rows[0] as { lastval: number }).lastval);
+      } else {
+        return -1;
+      }
+    } else {
+      // selectは実行結果を返す
+      return result.rows;
+    }
   }
 
   /**
