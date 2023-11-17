@@ -936,6 +936,7 @@ type updateObjects = {
 type updateObject = {
   isConfirmed?: boolean;
   document_id?: number;
+  tmp_document_id?: string;
   case_id?: number;
   hash?: string;
   case_no?: string;
@@ -1482,7 +1483,14 @@ const registerPatientInfo = async (
   patInfo: PatientItemDefine | undefined,
   executeUserId: number
 ) => {
-  if (patInfo == null) return undefined;
+  if (
+    patInfo == null ||
+    !patInfo.his_id?.toString() ||
+    !patInfo.name?.toString() ||
+    !patInfo.date_of_birth?.toString()
+  ) {
+    return undefined;
+  }
 
   let case_id: number | undefined = undefined;
 
@@ -1531,7 +1539,7 @@ const registerPatientInfo = async (
 
 /**
  * 患者・ドキュメント情報インポート実行
- * @param arg
+ * @param arg {updateObjects: 1患者分の更新データ, executeUserId: 利用者ID}
  * @returns
  */
 export const importPluginExecute = async (arg: {
@@ -1540,9 +1548,9 @@ export const importPluginExecute = async (arg: {
 }) => {
   logging(LOGTYPE.DEBUG, '呼び出し', 'Plugin', 'importPluginExecute');
 
-  const { updateObjects, executeUserId } = arg;
+  const { updateObjects: importObjects, executeUserId } = arg;
 
-  if (!updateObjects) {
+  if (!importObjects) {
     return { statusNum: RESULT.ABNORMAL_TERMINATION, body: undefined };
   }
 
@@ -1551,7 +1559,7 @@ export const importPluginExecute = async (arg: {
 
   let tmpCaseId = 1;
 
-  const { objects } = updateObjects;
+  const { objects } = importObjects;
 
   // ツリー構造のスキーマ一覧を取得しておく
   let rootSchemaTree: treeSchema[] = [];
@@ -1565,162 +1573,203 @@ export const importPluginExecute = async (arg: {
     ).treeSchema;
   }
 
-  // 新規ドキュメント保存処理
-  for (const patItem of objects) {
-    // 初めに患者情報(jesgo_case)を登録する
-    case_id = await registerPatientInfo(patItem.patient_info, executeUserId);
-
-    if (case_id) {
-      // 既存のドキュメント取得
-      const loadedSaveData = (await getCaseAndDocument(case_id))
-        .body as SaveDataObjDefine;
-      loadedSaveData.jesgo_case.is_new_case = false;
-
-      const dbAccess = new DbAccess();
-      // ドキュメントの登録
-      try {
-        await dbAccess.connectWithConf();
-
-        const func = async (
-          targetSchema: treeSchema,
-          isRoot: boolean,
-          parentDoc?: jesgoDocumentObjDefine
-        ) => {
-          // 既存のドキュメントを取得
-          let document = loadedSaveData.jesgo_document.find((p) => {
-            if (isRoot) {
-              // ルートの場合はroot_orderも見る
-              return (
-                p.value.schema_id === targetSchema.schema_id &&
-                p.root_order > -1
-              );
-            } else if (parentDoc) {
-              // サブスキーマの場合は親ドキュメントに紐づけ済みのものを取得
-              const convertChildDocToSchemaId =
-                parentDoc.value.child_documents.map(
-                  (childId) =>
-                    loadedSaveData.jesgo_document.find(
-                      (a) => a.key.toString() === childId.toString()
-                    )?.value.schema_id
-                );
-              return (
-                p.value.schema_id === targetSchema.schema_id &&
-                convertChildDocToSchemaId.includes(p.value.schema_id)
-              );
-            }
-            // ここには来ない想定
-            return false;
-          });
-
-          if (!document) {
-            // ドキュメントが見つからない場合は新規作成
-            document = {
-              key: `K${tmpCaseId}`,
-              root_order: -1,
-              value: {
-                case_id: case_id?.toString() ?? '',
-                event_date: '',
-                child_documents: [],
-                document: {},
-                schema_id: -1,
-                schema_primary_id: -1,
-                schema_major_version: 1,
-                inherit_schema: [],
-                registrant: executeUserId,
-                readonly: false,
-                deleted: false,
-                last_updated: updateDate,
-              },
-              event_date_prop_name: '',
-              death_data_prop_name: '',
-              delete_document_keys: [],
-            };
-
-            tmpCaseId += 1;
-          }
-
-          if (
-            document.key.startsWith('K') &&
-            targetSchema.schema_id &&
-            targetSchema.schema_id !== 0
-          ) {
-            // 新規ドキュメント作成
-            if (isRoot) {
-              // 空のルートドキュメントの作成
-
-              // 作成済みのルートドキュメントを取得
-              const rootDocList = (await dbAccess.query(
-                `SELECT document_id, case_id, root_order
-              FROM jesgo_document WHERE case_id = $1 AND root_order > -1 AND deleted = false`,
-                [case_id]
-              )) as {
-                document_id: number;
-                case_id: number;
-                root_order: number;
-              }[];
-
-              // ルートの並び順設定
-              document.root_order =
-                rootDocList.length === 0
-                  ? 1
-                  : Math.max(...rootDocList.map((p) => Number(p.root_order))) +
-                    1;
-            }
-
-            const docVal = document.value;
-            docVal.schema_id = targetSchema.schema_id;
-            docVal.schema_primary_id = targetSchema.schema_primary_id;
-
-            loadedSaveData.jesgo_document.push(document);
-
-            // 子ドキュメントの場合は親のドキュメントに紐づける
-            if (!isRoot && parentDoc) {
-              parentDoc.value.child_documents.push(document.key);
-            }
-          }
-
-          // サブスキーマの作成
-          if (targetSchema.subschema.length > 0) {
-            for (const targetSubschema of targetSchema.subschema) {
-              await func(targetSubschema, false, document);
-            }
-          }
-        };
-
-        const rootSchemaInfo = rootSchemaTree.find(
-          (p) => p.schema_id_string === patItem.schema_id
-        );
-        // トップレベルのスキーマがルートスキーマだった場合に作成する
-        if (rootSchemaInfo) {
-          await func(rootSchemaInfo, true);
-        }
-
-        // INSERT処理は既存の保存処理に任せる
-        const insertResult = await registrationCaseAndDocument(loadedSaveData);
-
-        if (insertResult.statusNum === RESULT.NORMAL_TERMINATION) {
-          // objects[0].target
-        }
-      } catch (e) {
-        throw e as Error;
-      } finally {
-        await dbAccess.end();
-      }
-    }
-  }
-
   try {
-    // await dbAccess.connectWithConf();
+    let lastPatInfo: PatientItemDefine | undefined = undefined;
+    let loadedSaveData: SaveDataObjDefine | undefined = undefined;
 
-    const checkList: updateCheckObject[] = [];
-    const updateList: updateCheckObject[] = [];
-    for (let index = 0; index < objects.length; index++) {
-      const updateObject = objects[index];
+    // 新規ドキュメント保存処理
+    for (const patItem of objects) {
+      // 初めに患者情報(jesgo_case)を登録する
+      case_id = await registerPatientInfo(patItem.patient_info, executeUserId);
+
+      if (case_id) {
+        lastPatInfo = patItem.patient_info;
+        // 既存のドキュメント取得
+        loadedSaveData = (await getCaseAndDocument(case_id))
+          .body as SaveDataObjDefine;
+        loadedSaveData.jesgo_case.is_new_case = false;
+
+        const dbAccess = new DbAccess();
+        // ドキュメントの登録
+        try {
+          await dbAccess.connectWithConf();
+
+          const func = async (
+            targetSchema: treeSchema,
+            targetUpdateObject: updateObject,
+            isRoot: boolean,
+            parentDoc?: jesgoDocumentObjDefine
+          ) => {
+            // 既存のドキュメントを取得
+            let document = loadedSaveData!.jesgo_document.find((p) => {
+              if (isRoot) {
+                // ルートの場合はroot_orderも見る
+                return (
+                  p.value.schema_id === targetSchema.schema_id &&
+                  p.root_order > -1
+                );
+              } else if (parentDoc) {
+                // サブスキーマの場合は親ドキュメントに紐づけ済みのものを取得
+                const convertChildDocToSchemaId =
+                  parentDoc.value.child_documents.map(
+                    (childId) =>
+                      loadedSaveData!.jesgo_document.find(
+                        (a) => a.key.toString() === childId.toString()
+                      )?.value.schema_id
+                  );
+                return (
+                  p.value.schema_id === targetSchema.schema_id &&
+                  convertChildDocToSchemaId.includes(p.value.schema_id)
+                );
+              }
+              // ここには来ない想定
+              return false;
+            });
+
+            if (!document) {
+              // ドキュメントが見つからない場合は新規作成
+              document = {
+                key: `K${tmpCaseId}`,
+                root_order: -1,
+                value: {
+                  case_id: case_id?.toString() ?? '',
+                  event_date: '',
+                  child_documents: [],
+                  document: {},
+                  schema_id: -1,
+                  schema_primary_id: -1,
+                  schema_major_version: 1,
+                  inherit_schema: [],
+                  registrant: executeUserId,
+                  readonly: false,
+                  deleted: false,
+                  last_updated: updateDate,
+                },
+                event_date_prop_name: '',
+                death_data_prop_name: '',
+                delete_document_keys: [],
+              };
+              tmpCaseId += 1;
+              // 紐づけ用に仮番を保持
+              targetUpdateObject.tmp_document_id = document.key;
+            } else {
+              targetUpdateObject.document_id = Number(document.key);
+            }
+
+            if (
+              document.key.startsWith('K') &&
+              targetSchema.schema_id &&
+              targetSchema.schema_id !== 0
+            ) {
+              // 新規ドキュメント作成
+              if (isRoot) {
+                // 空のルートドキュメントの作成
+
+                // 作成済みのルートドキュメントを取得
+                const rootDocList = (await dbAccess.query(
+                  `SELECT document_id, case_id, root_order
+              FROM jesgo_document WHERE case_id = $1 AND root_order > -1 AND deleted = false`,
+                  [case_id]
+                )) as {
+                  document_id: number;
+                  case_id: number;
+                  root_order: number;
+                }[];
+
+                // ルートの並び順設定
+                document.root_order =
+                  rootDocList.length === 0
+                    ? 1
+                    : Math.max(
+                        ...rootDocList.map((p) => Number(p.root_order))
+                      ) + 1;
+              }
+
+              const docVal = document.value;
+              docVal.schema_id = targetSchema.schema_id;
+              docVal.schema_primary_id = targetSchema.schema_primary_id;
+
+              loadedSaveData!.jesgo_document.push(document);
+
+              // 子ドキュメントの場合は親のドキュメントに紐づける
+              if (!isRoot && parentDoc) {
+                parentDoc.value.child_documents.push(document.key);
+              }
+            }
+
+            // サブスキーマの作成
+            if (targetSchema.subschema.length > 0) {
+              for (const targetSubschema of targetSchema.subschema) {
+                const updateSubschemaObj =
+                  targetUpdateObject.child_documents?.find(
+                    (p) => p.schema_id === targetSubschema.schema_id_string
+                  );
+                if (updateSubschemaObj) {
+                  await func(
+                    targetSubschema,
+                    updateSubschemaObj,
+                    false,
+                    document
+                  );
+                }
+              }
+            }
+          };
+
+          const rootSchemaInfo = rootSchemaTree.find(
+            (p) => p.schema_id_string === patItem.schema_id
+          );
+          // トップレベルのスキーマがルートスキーマだった場合に作成する
+          if (rootSchemaInfo) {
+            await func(rootSchemaInfo, patItem, true);
+          }
+
+          // INSERT処理は既存の保存処理に任せる
+          const insertResult = await registrationCaseAndDocument(
+            lodash.cloneDeep(loadedSaveData)
+          );
+
+          if (insertResult.statusNum === RESULT.NORMAL_TERMINATION) {
+            // 新旧ドキュメントID付け替え
+            if (insertResult.extension) {
+              const funcUpdateDocRelation = (updateItem: updateObject) => {
+                if (updateItem.tmp_document_id) {
+                  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+                  const newDocId = (insertResult.extension as Obj)[
+                    updateItem.tmp_document_id
+                  ];
+                  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+                  updateItem.document_id = Number(newDocId);
+                }
+
+                if (
+                  updateItem.child_documents &&
+                  updateItem.child_documents.length > 0
+                ) {
+                  updateItem.child_documents.forEach((item) =>
+                    funcUpdateDocRelation(item)
+                  );
+                }
+              };
+              funcUpdateDocRelation(patItem);
+            }
+          }
+        } catch (e) {
+          throw e as Error;
+        } finally {
+          await dbAccess.end();
+        }
+      }
     }
 
     return {
       statusNum: RESULT.NORMAL_TERMINATION,
-      body: { his_id: 1, patient_name: 'aiueo', checkList, updateList },
+      body: {
+        his_id: lastPatInfo?.his_id,
+        patient_name: lastPatInfo?.name,
+        case_id,
+        returnUpdateObjects: objects,
+      },
     };
   } catch (e) {
     console.error(e);
@@ -1728,14 +1777,12 @@ export const importPluginExecute = async (arg: {
       LOGTYPE.ERROR,
       `【エラー】${(e as Error).message}`,
       'Plugin',
-      'updatePluginExecute'
+      'importPluginExecute'
     );
     return {
       statusNum: RESULT.ABNORMAL_TERMINATION,
       body: (e as Error).message,
     };
-  } finally {
-    // await dbAccess.end();
   }
 };
 

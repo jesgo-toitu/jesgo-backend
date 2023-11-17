@@ -764,7 +764,7 @@ export const registrationCaseAndDocument = async (
       }
     }
     await dbAccess.query('COMMIT');
-    return { statusNum: RESULT.NORMAL_TERMINATION, body: caseId };
+    return { statusNum: RESULT.NORMAL_TERMINATION, body: caseId, extension: dummyNumber };
   } catch (e) {
     logging(
       LOGTYPE.ERROR,
