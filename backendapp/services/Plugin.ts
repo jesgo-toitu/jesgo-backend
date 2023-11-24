@@ -1596,10 +1596,17 @@ export const importPluginExecute = async (arg: {
 
           const func = async (
             targetSchema: treeSchema,
-            targetUpdateObject: updateObject,
+            targetUpdateObject: updateObject | undefined,
             isRoot: boolean,
             parentDoc?: jesgoDocumentObjDefine
           ) => {
+            if (!targetUpdateObject) {
+              targetUpdateObject = {
+                schema_ids: [],
+                target: {},
+              };
+            }
+
             // 既存のドキュメントを取得
             let document = loadedSaveData!.jesgo_document.find((p) => {
               if (isRoot) {
@@ -1652,6 +1659,18 @@ export const importPluginExecute = async (arg: {
               tmpCaseId += 1;
               // 紐づけ用に仮番を保持
               targetUpdateObject.tmp_document_id = document.key;
+
+              // TODO: typeによってデフォルト値変えた方がよい？
+              // switch (targetSchema.schemaType) {
+              //   case 'string': {
+              //     document.value.document = '';
+              //     break;
+              //   }
+              //   case 'array': {
+              //     document.value.document = [];
+              //     break;
+              //   }
+              // }
             } else {
               targetUpdateObject.document_id = Number(document.key);
             }
@@ -1701,17 +1720,15 @@ export const importPluginExecute = async (arg: {
             if (targetSchema.subschema.length > 0) {
               for (const targetSubschema of targetSchema.subschema) {
                 const updateSubschemaObj =
-                  targetUpdateObject.child_documents?.find(
+                  targetUpdateObject?.child_documents?.find(
                     (p) => p.schema_id === targetSubschema.schema_id_string
                   );
-                if (updateSubschemaObj) {
-                  await func(
-                    targetSubschema,
-                    updateSubschemaObj,
-                    false,
-                    document
-                  );
-                }
+                await func(
+                  targetSubschema,
+                  updateSubschemaObj,
+                  false,
+                  document
+                );
               }
             }
           };

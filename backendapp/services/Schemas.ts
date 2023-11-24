@@ -2,7 +2,7 @@ import lodash from 'lodash';
 import { logging, LOGTYPE } from '../logic/Logger';
 import { ApiReturnObject, RESULT } from '../logic/ApiCommon';
 import { DbAccess } from '../logic/DbAccess';
-import { formatDateStr, JSONSchema7 } from './JsonToDatabase';
+import { formatDateStr, JSONSchema7, JSONSchema7TypeName } from './JsonToDatabase';
 
 export interface getJsonSchemaBody {
   ids: number[] | undefined;
@@ -42,7 +42,7 @@ export type schemaRecord = {
   schema_id_string: string;
   title: string;
   subtitle: string;
-  document_schema: string;
+  document_schema: JSONSchema7;
   uniqueness: boolean;
   hidden: boolean;
   subschema: number[];
@@ -69,6 +69,7 @@ export type treeSchema = {
   subschema: treeSchema[];
   childschema: treeSchema[];
   inheritschema: treeSchema[];
+  schemaType: JSONSchema7TypeName | undefined;
 };
 
 export const getJsonSchema = async (
@@ -354,6 +355,7 @@ export const schemaRecord2SchemaTree = (
     subschema: subSchemaListWithTree,
     childschema: childSchemaListWithTree,
     inheritschema: inheritSchemaListWithTree,
+    schemaType: schemaRecord.document_schema.type as JSONSchema7TypeName
   };
 };
 
