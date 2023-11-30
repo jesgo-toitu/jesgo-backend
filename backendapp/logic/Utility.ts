@@ -22,6 +22,7 @@ export namespace Const {
     REGISTRATION_NUMBER: 'registration_number',
     RECURRENCE: 'recurrence',
     TREATMENT_SURGERY: 'treatment_surgery',
+    SURGIGAL_COMPLICATIONS: 'has_complications',
     TREATMENT_CHEMO: 'treatment_chemo',
     TREATMENT_RADIO: 'treatment_radio',
     TREATMENT_SUPPORTIVECARE: 'treatment_supportivecare',
