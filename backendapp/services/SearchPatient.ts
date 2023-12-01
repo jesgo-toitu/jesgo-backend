@@ -451,7 +451,7 @@ export const searchPatients = async (
         jesgo_tagging(Const.JESGO_TAG.TREATMENT_SUPPORTIVECARE)
       )
     ) {
-      let iconTag:string[] = [];
+      const iconTag: string[] = [];
 
       if (
         docSchema.includes(jesgo_tagging(Const.JESGO_TAG.TREATMENT_SURGERY))
@@ -463,19 +463,21 @@ export const searchPatients = async (
             dbRow.document_schema
           ) ?? '';
         if (tag !== '') {
-          iconTag.push('surgery')
-          
+          iconTag.push('surgery');
+
           if (
-            docSchema.includes(jesgo_tagging(Const.JESGO_TAG.SURGIGAL_COMPLICATIONS))
+            docSchema.includes(
+              jesgo_tagging(Const.JESGO_TAG.SURGIGAL_COMPLICATIONS)
+            )
           ) {
             const subTag =
               getPropertyNameFromTag(
                 Const.JESGO_TAG.SURGIGAL_COMPLICATIONS,
                 dbRow.document,
                 dbRow.document_schema
-              ) ?? 'なし'
+              ) ?? 'なし';
             if (subTag !== 'なし') {
-              iconTag.push('complications')
+              iconTag.push('complications');
             }
           }
         }
@@ -489,7 +491,7 @@ export const searchPatients = async (
             dbRow.document_schema
           ) ?? '';
         if (tag !== '') {
-          iconTag.push('chemo')
+          iconTag.push('chemo');
         }
       } else if (
         docSchema.includes(jesgo_tagging(Const.JESGO_TAG.TREATMENT_RADIO))
@@ -501,7 +503,7 @@ export const searchPatients = async (
             dbRow.document_schema
           ) ?? '';
         if (tag !== '') {
-          iconTag.push('radio')
+          iconTag.push('radio');
         }
       } else if (
         docSchema.includes(
@@ -514,9 +516,9 @@ export const searchPatients = async (
             dbRow.document,
             dbRow.document_schema
           ) ?? '';
-          if (tag !== '') {
-            iconTag.push('supportivecare')
-          }
+        if (tag !== '') {
+          iconTag.push('supportivecare');
+        }
       }
 
       if (iconTag.length > 0) {
