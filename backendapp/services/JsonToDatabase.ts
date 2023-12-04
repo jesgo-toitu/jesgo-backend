@@ -1166,10 +1166,10 @@ export const updateSearchColumn = async (): Promise<void> => {
     `SELECT document_schema 
     FROM view_latest_schema 
     WHERE document_schema->>'properties' like '%${escapeText(
-      jesgo_tagging(Const.JESGO_TAG.CANCER_MAJOR)
+      `"${Const.JESGO_TAG.CANCER_MAJOR}"`
     )}%' 
     OR document_schema->>'properties' like '%${escapeText(
-      jesgo_tagging(Const.JESGO_TAG.CANCER_MINOR)
+      `"${Const.JESGO_TAG.CANCER_MINOR}"`
     )}%' 
     AND schema_id <> 0 
     ORDER BY schema_id_string;`

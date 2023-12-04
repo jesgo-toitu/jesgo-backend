@@ -36,7 +36,7 @@ export const jesgo_tagging = (tag: string): string => {
 };
 
 export const escapeText = (text: string): string => {
-  return text.replace('"', '\\"');
+  return text.replace(/"/g, '\\"');
 };
 
 // 現在日付とN年の差があるかを確認する
