@@ -46,7 +46,7 @@ interface userData {
   advancedStage: string;
   pathlogicalDiagnosis: string;
   initialTreatment: string[];
-  copilacations: string[];
+  complications: string[];
   progress: string[];
   postRelapseTreatment: string[];
   registration: string[];
@@ -67,7 +67,7 @@ export interface searchPatientRequest extends ParsedQs {
   advancedStage: string;
   pathlogicalDiagnosis: string;
   initialTreatment: string;
-  copilacations: string;
+  complications: string;
   threeYearPrognosis: string;
   fiveYearPrognosis: string;
   showProgressAndRecurrence: string;
@@ -334,7 +334,7 @@ export const searchPatients = async (
         advancedStage: '',
         pathlogicalDiagnosis: '',
         initialTreatment: [],
-        copilacations: [],
+        complications: [],
         progress: [],
         postRelapseTreatment: [],
         registration: [],

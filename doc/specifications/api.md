@@ -348,7 +348,7 @@ DB に保存されている全ての情報が確認できる。
     - advancedStage: string;
     - pathlogicalDiagnosis: string;
     - initialTreatment: string;
-    - copilacations: string;
+    - complications: string;
     - threeYearPrognosis: string;
     - fiveYearPrognosis: string;
     - showProgressAndRecurrence: string;
@@ -373,7 +373,7 @@ DB に保存されている全ての情報が確認できる。
       advancedStage: string;
       pathlogicalDiagnosis: string;
       initialTreatment: string[];
-      copilacations: string[];
+      complications: string[];
       progress: string[];
       postRelapseTreatment: string[];
       registration: string[];
