@@ -451,7 +451,7 @@ export const searchPatients = async (
         jesgo_tagging(Const.JESGO_TAG.TREATMENT_SUPPORTIVECARE)
       )
     ) {
-      let iconTag = '';
+      const iconTag: string[] = [];
 
       if (
         docSchema.includes(jesgo_tagging(Const.JESGO_TAG.TREATMENT_SURGERY))
@@ -462,7 +462,25 @@ export const searchPatients = async (
             dbRow.document,
             dbRow.document_schema
           ) ?? '';
-        iconTag = tag !== '' ? 'surgery' : '';
+        if (tag !== '') {
+          iconTag.push('surgery');
+
+          if (
+            docSchema.includes(
+              jesgo_tagging(Const.JESGO_TAG.SURGIGAL_COMPLICATIONS)
+            )
+          ) {
+            const subTag =
+              getPropertyNameFromTag(
+                Const.JESGO_TAG.SURGIGAL_COMPLICATIONS,
+                dbRow.document,
+                dbRow.document_schema
+              ) ?? 'なし';
+            if (subTag !== 'なし') {
+              iconTag.push('complications');
+            }
+          }
+        }
       } else if (
         docSchema.includes(jesgo_tagging(Const.JESGO_TAG.TREATMENT_CHEMO))
       ) {
@@ -472,7 +490,9 @@ export const searchPatients = async (
             dbRow.document,
             dbRow.document_schema
           ) ?? '';
-        iconTag = tag !== '' ? 'chemo' : '';
+        if (tag !== '') {
+          iconTag.push('chemo');
+        }
       } else if (
         docSchema.includes(jesgo_tagging(Const.JESGO_TAG.TREATMENT_RADIO))
       ) {
@@ -482,7 +502,9 @@ export const searchPatients = async (
             dbRow.document,
             dbRow.document_schema
           ) ?? '';
-        iconTag = tag !== '' ? 'radio' : '';
+        if (tag !== '') {
+          iconTag.push('radio');
+        }
       } else if (
         docSchema.includes(
           jesgo_tagging(Const.JESGO_TAG.TREATMENT_SUPPORTIVECARE)
@@ -494,21 +516,23 @@ export const searchPatients = async (
             dbRow.document,
             dbRow.document_schema
           ) ?? '';
-        iconTag = tag !== '' ? 'supportivecare' : '';
+        if (tag !== '') {
+          iconTag.push('supportivecare');
+        }
       }
 
-      if (iconTag !== '') {
+      if (iconTag.length > 0) {
         // 再発系の場合
         if (recurrenceChildDocumentIds.includes(dbRow.document_id)) {
-          userData.postRelapseTreatment.push(iconTag);
+          userData.postRelapseTreatment.push(...iconTag);
         }
         // 初回治療の場合
         else {
-          userData.initialTreatment.push(iconTag);
+          userData.initialTreatment.push(...iconTag);
         }
 
         // どちらでもステータスに入れる
-        userData.status.push(iconTag);
+        userData.status.push(...iconTag);
       }
     }
 
