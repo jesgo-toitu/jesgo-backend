@@ -1178,10 +1178,10 @@ export const updateSearchColumn = async (): Promise<void> => {
     `SELECT document_schema 
     FROM view_latest_schema 
     WHERE document_schema->>'properties' like '%${escapeText(
-      jesgo_tagging(Const.JESGO_TAG.CANCER_MAJOR)
+      `"${Const.JESGO_TAG.CANCER_MAJOR}"`
     )}%' 
     OR document_schema->>'properties' like '%${escapeText(
-      jesgo_tagging(Const.JESGO_TAG.CANCER_MINOR)
+      `"${Const.JESGO_TAG.CANCER_MINOR}"`
     )}%' 
     AND schema_id <> 0 
     ORDER BY schema_id_string;`
@@ -1216,17 +1216,28 @@ export const updateSearchColumn = async (): Promise<void> => {
     }
   }
 
-  // 取得した情報でDBを更新
-  await dbAccess.query(
-    "DELETE FROM jesgo_search_column WHERE column_type = 'cancer_type'"
-  );
   const cancerList = majorCancers.concat(minorCancers);
 
-  for (let i = 0; i < cancerList.length; i++) {
+  // 現在のリストを取得
+  const searchColumnResult = (await dbAccess.query(
+    `SELECT column_name FROM jesgo_search_column ORDER BY column_id`
+  )) as { column_name: string }[];
+  const searchColumnList = searchColumnResult.map((p) => p.column_name);
+
+  // 現在のリストとスキーマから生成したリストが異なれば更新する
+  if (JSON.stringify(searchColumnList) !== JSON.stringify(cancerList)) {
     await dbAccess.query(
-      "INSERT INTO jesgo_search_column VALUES ($1, 'cancer_type', $2)",
-      [i + 1, cancerList[i]]
+      "DELETE FROM jesgo_search_column WHERE column_type = 'cancer_type'",
+      undefined,
+      'update'
     );
+
+    for (let i = 0; i < cancerList.length; i++) {
+      await dbAccess.query(
+        "INSERT INTO jesgo_search_column VALUES ($1, 'cancer_type', $2)",
+        [i + 1, cancerList[i]]
+      );
+    }
   }
 };
 
