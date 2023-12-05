@@ -453,6 +453,7 @@ export const searchPatients = async (
     ) {
       const iconTag: string[] = [];
 
+      // 手術療法
       if (
         docSchema.includes(jesgo_tagging(Const.JESGO_TAG.TREATMENT_SURGERY))
       ) {
@@ -465,6 +466,7 @@ export const searchPatients = async (
         if (tag !== '') {
           iconTag.push('surgery');
 
+          // 合併症の有無
           if (
             docSchema.includes(
               jesgo_tagging(Const.JESGO_TAG.SURGIGAL_COMPLICATIONS)
@@ -475,13 +477,18 @@ export const searchPatients = async (
                 Const.JESGO_TAG.SURGIGAL_COMPLICATIONS,
                 dbRow.document,
                 dbRow.document_schema
-              ) ?? 'なし';
-            if (subTag !== 'なし') {
+              ) ?? '';
+            if (subTag === '') {
+              // 未入力時
+              userData.complications.push('no_input');
+            } else if (subTag !== 'なし') {
+              // ありの場合はアイコン表示
               iconTag.push('complications');
             }
           }
         }
       } else if (
+        // 化学療法(薬物療法)
         docSchema.includes(jesgo_tagging(Const.JESGO_TAG.TREATMENT_CHEMO))
       ) {
         const tag =
@@ -881,6 +888,39 @@ export const searchPatients = async (
           userDataList.splice(index, 1);
           index--;
         }
+      }
+    }
+
+    // 合併症
+    if (query.complications && query.complications === 'true') {
+      for (let index = 0; index < userDataList.length; index++) {
+        const userData = userDataList[index];
+        if (!userData.complications.includes('no_input')) {
+          userDataList.splice(index, 1);
+          index--;
+        }
+      }
+    }
+  }
+
+  // 3年予後
+  if (query.threeYearPrognosis && query.threeYearPrognosis === 'true') {
+    for (let index = 0; index < userDataList.length; index++) {
+      const userData = userDataList[index];
+      if (!userData.threeYearPrognosis.includes('not_completed')) {
+        userDataList.splice(index, 1);
+        index--;
+      }
+    }
+  }
+
+  // 5年予後
+  if (query.fiveYearPrognosis && query.fiveYearPrognosis === 'true') {
+    for (let index = 0; index < userDataList.length; index++) {
+      const userData = userDataList[index];
+      if (!userData.fiveYearPrognosis.includes('not_completed')) {
+        userDataList.splice(index, 1);
+        index--;
       }
     }
   }
