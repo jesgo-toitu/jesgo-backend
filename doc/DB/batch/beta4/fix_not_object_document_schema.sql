@@ -1,4 +1,5 @@
 -- スキーマの修正(同等)
+-- 実施手術スキーマの更新
 UPDATE jesgo_document_schema
 SET
   document_schema = (jsonb_set((document_schema::jsonb - 'items'), '{type}', '"object"') ||  '{"properties":{"実施手術":{"type":"array","description": "主たる術式を最初の行に配置してください.","items":{"$ref": "#/$defs/procedure"}}}}')::json
@@ -7,6 +8,7 @@ WHERE
   AND
   (document_schema ->> 'type') = 'array';
 
+-- PerformanceStatusスキーマの更新(oneOf)
 UPDATE jesgo_document_schema
 SET document_schema = 
 jsonb_set(document_schema::jsonb - 'oneOf', '{"type"}', '"object"')
@@ -21,7 +23,28 @@ jsonb_set('{"properties":{"PerformanceStatus":{"type":"integer","description":"E
  WHERE
   schema_id_string in ('/schema/evaluation/performance_status', '/schema/evaluations/performance_status')
    AND
-   (document_schema->>'type') = 'integer';
+   (document_schema->>'type') = 'integer'
+   AND
+   (document_schema->>'oneOf') IS NOT NULL;
+
+-- PerformanceStatusスキーマの更新(anyOf)
+UPDATE jesgo_document_schema
+SET document_schema = 
+jsonb_set(document_schema::jsonb - 'anyOf', '{"type"}', '"object"')
+||
+jsonb_set('{"properties":{"PerformanceStatus":{"type":"integer","description":"ECOGのPerformance Status"}}}'::jsonb, '{"properties", "PerformanceStatus", "anyOf"}',
+          regexp_replace(
+            replace(document_schema::jsonb->>'anyOf', '<BR/>', ''),
+            '{(?:"const": (\d)), (?:"title": "([^"]+)")}', '{"const":\1, "title": "\1: \2"}',
+            'g'
+          )::jsonb
+ ) 
+ WHERE
+  schema_id_string in ('/schema/evaluation/performance_status', '/schema/evaluations/performance_status')
+   AND
+   (document_schema->>'type') = 'integer'
+   AND
+   (document_schema->>'anyOf') IS NOT NULL;
 
 -- ドキュメントの修正
 UPDATE jesgo_document
