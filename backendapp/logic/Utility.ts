@@ -36,17 +36,15 @@ export const jesgo_tagging = (tag: string): string => {
 };
 
 export const escapeText = (text: string): string => {
-  return text.replace('"', '\\"');
+  return text.replace(/"/g, '\\"');
 };
 
-// 現在日付とN年の差があるかを確認する
+// 現在日付と満N年経過しているかを確認する
 export const isAgoYearFromNow = (date: Date, year: number): boolean => {
   logging(LOGTYPE.DEBUG, `呼び出し`, 'Utility', 'isAgoYearFromNow');
-  const compareDateMillSec = new Date().getTime() - date.getTime();
-  // ミリ秒の差を日数に直す
-  const compareDay = compareDateMillSec / (24 * 60 * 60 * 1000);
-  // N年*365日より差が大きかったらN年以上立ってるものとする
-  return compareDay > year * 365;
+
+  const yearDiff = new Date().getFullYear() - date.getFullYear();
+  return yearDiff > year;
 };
 
 // 日付(Date形式)をyyyy/MM/ddなどの形式に変換
