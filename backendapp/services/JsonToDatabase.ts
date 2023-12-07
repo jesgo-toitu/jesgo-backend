@@ -730,10 +730,10 @@ const fileListInsert = async (
   fileList: string[],
   errorMessages: string[],
   dirPath: string
-): Promise<number> => {
+): Promise<{ updateNum: number; isSchemaAllUpdate: boolean }> => {
   logging(LOGTYPE.DEBUG, `呼び出し`, 'JsonToDatabase', 'fileListInsert');
   let updateNum = 0;
-  const jsons: JSONSchema7[] = [];
+  const jsons: { json: JSONSchema7; filePath: string }[] = [];
   for (let i = 0; i < fileList.length; i++) {
     if (!fileList[i].endsWith('.json')) {
       logging(
@@ -756,7 +756,7 @@ const fileListInsert = async (
     let json: JSONSchema7 = {};
     try {
       json = JSON.parse(readFileSync(fileList[i], 'utf8')) as JSONSchema7;
-      jsons.push(json);
+      jsons.push({ json, filePath: fileList[i] });
     } catch {
       logging(
         LOGTYPE.ERROR,
@@ -782,16 +782,16 @@ const fileListInsert = async (
     // 文字列の短い順(よりパスの短い順)に整列
     .sort(function (a, b) {
       // $ID順で並び替え
-      if (a.$id && b.$id) {
-        if (a.$id !== b.$id) {
-          if (a.$id > b.$id) return 1;
-          if (a.$id < b.$id) return -1;
+      if (a.json.$id && b.json.$id) {
+        if (a.json.$id !== b.json.$id) {
+          if (a.json.$id > b.json.$id) return 1;
+          if (a.json.$id < b.json.$id) return -1;
         }
       }
 
       // バージョンの比較
-      const versionOfA = a['jesgo:version'];
-      const versionOfB = b['jesgo:version'];
+      const versionOfA = a.json['jesgo:version'];
+      const versionOfB = b.json['jesgo:version'];
       if (versionOfA && versionOfB) {
         // メジャーバージョン順で並び替え
         if (
@@ -814,19 +814,31 @@ const fileListInsert = async (
       return 0;
     });
 
+  const insertedList: JSONSchema7[] = [];
+  let isSchemaAllUpdate = false;
+
   for (let i = 0; i < jsons.length; i++) {
     // Insert用IDを含む旧データの取得
-    const oldJsonData = await getOldSchema(jsons[i].$id as string);
+    const oldJsonData = await getOldSchema(jsons[i].json.$id as string);
 
     const [query, values, subqueryValues] = makeInsertQuery(
       oldJsonData,
-      jsons[i],
+      jsons[i].json,
       dirPath,
-      fileList[i],
+      jsons[i].filePath,
       errorMessages
     );
     if (query !== '') {
       await dbAccess.query(query, values);
+
+      // 同一スキーマIDのスキーマが処理された場合、後続のschemaListUpdateを全スキーマ更新モードで実行する
+      if (insertedList.find((p) => p.$id === jsons[i].json.$id)) {
+        isSchemaAllUpdate = true;
+      }
+      if (!isSchemaAllUpdate) {
+        insertedList.push(jsons[i].json);
+      }
+
       if (subqueryValues[0] !== '') {
         // 旧スキーマの有効期限更新がある場合そちらも行う
         await dbAccess.query(
@@ -837,7 +849,7 @@ const fileListInsert = async (
       updateNum++;
     }
   }
-  return updateNum;
+  return { updateNum, isSchemaAllUpdate };
 };
 
 /**
@@ -1166,10 +1178,10 @@ export const updateSearchColumn = async (): Promise<void> => {
     `SELECT document_schema 
     FROM view_latest_schema 
     WHERE document_schema->>'properties' like '%${escapeText(
-      jesgo_tagging(Const.JESGO_TAG.CANCER_MAJOR)
+      `"${Const.JESGO_TAG.CANCER_MAJOR}"`
     )}%' 
     OR document_schema->>'properties' like '%${escapeText(
-      jesgo_tagging(Const.JESGO_TAG.CANCER_MINOR)
+      `"${Const.JESGO_TAG.CANCER_MINOR}"`
     )}%' 
     AND schema_id <> 0 
     ORDER BY schema_id_string;`
@@ -1204,17 +1216,28 @@ export const updateSearchColumn = async (): Promise<void> => {
     }
   }
 
-  // 取得した情報でDBを更新
-  await dbAccess.query(
-    "DELETE FROM jesgo_search_column WHERE column_type = 'cancer_type'"
-  );
   const cancerList = majorCancers.concat(minorCancers);
 
-  for (let i = 0; i < cancerList.length; i++) {
+  // 現在のリストを取得
+  const searchColumnResult = (await dbAccess.query(
+    `SELECT column_name FROM jesgo_search_column ORDER BY column_id`
+  )) as { column_name: string }[];
+  const searchColumnList = searchColumnResult.map((p) => p.column_name);
+
+  // 現在のリストとスキーマから生成したリストが異なれば更新する
+  if (JSON.stringify(searchColumnList) !== JSON.stringify(cancerList)) {
     await dbAccess.query(
-      "INSERT INTO jesgo_search_column VALUES ($1, 'cancer_type', $2)",
-      [i + 1, cancerList[i]]
+      "DELETE FROM jesgo_search_column WHERE column_type = 'cancer_type'",
+      undefined,
+      'update'
     );
+
+    for (let i = 0; i < cancerList.length; i++) {
+      await dbAccess.query(
+        "INSERT INTO jesgo_search_column VALUES ($1, 'cancer_type', $2)",
+        [i + 1, cancerList[i]]
+      );
+    }
   }
 };
 
@@ -1312,16 +1335,16 @@ export const uploadZipFile = async (data: any): Promise<ApiReturnObject> => {
 
     await dbAccess.connectWithConf();
 
-    const updateNum = await fileListInsert(fileList, errorMessages, dirPath);
+    const result = await fileListInsert(fileList, errorMessages, dirPath);
 
     // スキーマが1件以上新規登録、更新された場合のみ関係性のアップデートを行う
-    if (updateNum > 0) {
-      await schemaListUpdate();
+    if (result.updateNum > 0) {
+      await schemaListUpdate(result.isSchemaAllUpdate);
     }
 
     return {
       statusNum: RESULT.NORMAL_TERMINATION,
-      body: { number: updateNum, message: errorMessages },
+      body: { number: result.updateNum, message: errorMessages },
     };
   } catch (e) {
     if (dbAccess.connected) {

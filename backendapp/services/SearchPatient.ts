@@ -46,7 +46,7 @@ interface userData {
   advancedStage: string;
   pathlogicalDiagnosis: string;
   initialTreatment: string[];
-  copilacations: string[];
+  complications: string[];
   progress: string[];
   postRelapseTreatment: string[];
   registration: string[];
@@ -67,7 +67,7 @@ export interface searchPatientRequest extends ParsedQs {
   advancedStage: string;
   pathlogicalDiagnosis: string;
   initialTreatment: string;
-  copilacations: string;
+  complications: string;
   threeYearPrognosis: string;
   fiveYearPrognosis: string;
   showProgressAndRecurrence: string;
@@ -334,7 +334,7 @@ export const searchPatients = async (
         advancedStage: '',
         pathlogicalDiagnosis: '',
         initialTreatment: [],
-        copilacations: [],
+        complications: [],
         progress: [],
         postRelapseTreatment: [],
         registration: [],
@@ -451,8 +451,9 @@ export const searchPatients = async (
         jesgo_tagging(Const.JESGO_TAG.TREATMENT_SUPPORTIVECARE)
       )
     ) {
-      let iconTag = '';
+      const iconTag: string[] = [];
 
+      // 手術療法
       if (
         docSchema.includes(jesgo_tagging(Const.JESGO_TAG.TREATMENT_SURGERY))
       ) {
@@ -462,8 +463,32 @@ export const searchPatients = async (
             dbRow.document,
             dbRow.document_schema
           ) ?? '';
-        iconTag = tag !== '' ? 'surgery' : '';
+        if (tag !== '') {
+          iconTag.push('surgery');
+
+          // 合併症の有無
+          if (
+            docSchema.includes(
+              jesgo_tagging(Const.JESGO_TAG.SURGIGAL_COMPLICATIONS)
+            )
+          ) {
+            const subTag =
+              getPropertyNameFromTag(
+                Const.JESGO_TAG.SURGIGAL_COMPLICATIONS,
+                dbRow.document,
+                dbRow.document_schema
+              ) ?? '';
+            if (subTag === '') {
+              // 未入力時
+              userData.complications.push('no_input');
+            } else if (subTag !== 'なし') {
+              // ありの場合はアイコン表示
+              iconTag.push('complications');
+            }
+          }
+        }
       } else if (
+        // 化学療法(薬物療法)
         docSchema.includes(jesgo_tagging(Const.JESGO_TAG.TREATMENT_CHEMO))
       ) {
         const tag =
@@ -472,7 +497,9 @@ export const searchPatients = async (
             dbRow.document,
             dbRow.document_schema
           ) ?? '';
-        iconTag = tag !== '' ? 'chemo' : '';
+        if (tag !== '') {
+          iconTag.push('chemo');
+        }
       } else if (
         docSchema.includes(jesgo_tagging(Const.JESGO_TAG.TREATMENT_RADIO))
       ) {
@@ -482,7 +509,9 @@ export const searchPatients = async (
             dbRow.document,
             dbRow.document_schema
           ) ?? '';
-        iconTag = tag !== '' ? 'radio' : '';
+        if (tag !== '') {
+          iconTag.push('radio');
+        }
       } else if (
         docSchema.includes(
           jesgo_tagging(Const.JESGO_TAG.TREATMENT_SUPPORTIVECARE)
@@ -494,21 +523,23 @@ export const searchPatients = async (
             dbRow.document,
             dbRow.document_schema
           ) ?? '';
-        iconTag = tag !== '' ? 'supportivecare' : '';
+        if (tag !== '') {
+          iconTag.push('supportivecare');
+        }
       }
 
-      if (iconTag !== '') {
+      if (iconTag.length > 0) {
         // 再発系の場合
         if (recurrenceChildDocumentIds.includes(dbRow.document_id)) {
-          userData.postRelapseTreatment.push(iconTag);
+          userData.postRelapseTreatment.push(...iconTag);
         }
         // 初回治療の場合
         else {
-          userData.initialTreatment.push(iconTag);
+          userData.initialTreatment.push(...iconTag);
         }
 
         // どちらでもステータスに入れる
-        userData.status.push(iconTag);
+        userData.status.push(...iconTag);
       }
     }
 
@@ -857,6 +888,39 @@ export const searchPatients = async (
           userDataList.splice(index, 1);
           index--;
         }
+      }
+    }
+
+    // 合併症
+    if (query.complications && query.complications === 'true') {
+      for (let index = 0; index < userDataList.length; index++) {
+        const userData = userDataList[index];
+        if (!userData.complications.includes('no_input')) {
+          userDataList.splice(index, 1);
+          index--;
+        }
+      }
+    }
+  }
+
+  // 3年予後
+  if (query.threeYearPrognosis && query.threeYearPrognosis === 'true') {
+    for (let index = 0; index < userDataList.length; index++) {
+      const userData = userDataList[index];
+      if (!userData.threeYearPrognosis.includes('not_completed')) {
+        userDataList.splice(index, 1);
+        index--;
+      }
+    }
+  }
+
+  // 5年予後
+  if (query.fiveYearPrognosis && query.fiveYearPrognosis === 'true') {
+    for (let index = 0; index < userDataList.length; index++) {
+      const userData = userDataList[index];
+      if (!userData.fiveYearPrognosis.includes('not_completed')) {
+        userDataList.splice(index, 1);
+        index--;
       }
     }
   }
