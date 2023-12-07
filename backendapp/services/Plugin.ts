@@ -20,7 +20,7 @@ import {
   SaveDataObjDefine,
   treeSchema,
 } from './Schemas';
-import lodash from 'lodash';
+import lodash, { update } from 'lodash';
 import { logging, LOGTYPE } from '../logic/Logger';
 import { readdirSync, rename } from 'fs';
 import * as fs from 'fs';
@@ -1651,6 +1651,7 @@ export const importPluginExecute = async (arg: {
                   readonly: false,
                   deleted: false,
                   last_updated: updateDate,
+                  created: updateDate,
                 },
                 event_date_prop_name: '',
                 death_data_prop_name: '',
