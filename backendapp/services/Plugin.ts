@@ -1336,10 +1336,11 @@ export const executeUpdate = async (arg: {
     await dbAccess.connectWithConf();
     await dbAccess.query('BEGIN');
 
-    for (let index = 0; index < arg.updateObjects.length; index++) {
-      const documentId = arg.updateObjects[index].document_id;
-      const pointer = arg.updateObjects[index].pointer;
-      const record = arg.updateObjects[index].record;
+    // ドキュメントIDの一覧作成
+    const documentIdList = new Set(arg.updateObjects.map((p) => p.document_id));
+
+    // ドキュメント毎に処理する
+    for (const documentId of documentIdList) {
       const dbRows = (await dbAccess.query(
         `SELECT d.case_id, d.document, s.document_schema 
         FROM jesgo_document d JOIN jesgo_document_schema s 
@@ -1351,12 +1352,20 @@ export const executeUpdate = async (arg: {
       const oldDocument = lodash.cloneDeep(document);
       const caseId = dbRows[0].case_id;
       const documentSchema = dbRows[0].document_schema;
-      // 配列の末尾に追加する場合、要素を1つずつ追加する
-      if (Array.isArray(record) && pointer.endsWith('/-')) {
-        record.forEach((item) => jsonpointer.set(document, pointer, item));
-      } else {
-        jsonpointer.set(document, pointer, record);
-      }
+
+      arg.updateObjects
+        .filter((p) => p.document_id === documentId)
+        .forEach((checkItem) => {
+          const pointer = checkItem.pointer;
+          const record = checkItem.record;
+
+          // 配列の末尾に追加する場合、要素を1つずつ追加する
+          if (Array.isArray(record) && pointer.endsWith('/-')) {
+            record.forEach((item) => jsonpointer.set(document, pointer, item));
+          } else {
+            jsonpointer.set(document, pointer, record);
+          }
+        });
 
       // eventDate変更に関わらずまずドキュメントを更新する
       const updateQuery =
