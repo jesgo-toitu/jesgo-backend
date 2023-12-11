@@ -55,6 +55,7 @@ export type jesgoDocumentSelectItem = {
   schema_id: number;
   schema_primary_id: number;
   uniqueness: boolean;
+  schema_id_string: string;
   title: string;
   root_order: number;
 };
@@ -117,13 +118,14 @@ const generateDocument = (
 ) => {
   const parentDoc = srcDocList.find((p) => p.document_id === docId);
   if (parentDoc) {
-    // 文書がオブジェクトの場合 jesgo:document_id プロパティにドキュメントid仕込む
+    // 文書がオブジェクトの場合 jesgo:document_id, jesgo:schema_id プロパティにドキュメントidとschema_id_stringを仕込む(取得系のdocDataに追従)
     const documentBody = parentDoc?.document;
     if (documentBody) {
       deleteNullArrayObject(documentBody);
     }
     if (Object.prototype.toString.call(documentBody) === '[object Object]') {
       (documentBody as any)['jesgo:document_id'] = parentDoc.document_id;
+      (documentBody as any)['jesgo:schema_id'] = parentDoc.schema_id_string;
     }
 
     // ユニークな文書か否かで処理を分ける
@@ -247,6 +249,7 @@ export const getPackagedDocument = async (reqest: PackageDocumentRequest) => {
     doc.schema_primary_id,
     sc.title,
     sc.uniqueness,
+    sc.schema_id_string,
     doc.root_order
   from jesgo_document doc 
   left join jesgo_document_schema sc on doc.schema_primary_id = sc.schema_primary_id `;
@@ -276,6 +279,7 @@ export const getPackagedDocument = async (reqest: PackageDocumentRequest) => {
     doc.schema_primary_id,
     sc.title,
     sc.uniqueness,
+    sc.schema_id_string,
     doc.root_order 
   from tmp, jesgo_document as doc 
     left join jesgo_document_schema sc on doc.schema_primary_id = sc.schema_primary_id 
