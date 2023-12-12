@@ -12,7 +12,7 @@ import {
 } from '../logic/Utility';
 import { ApiReturnObject, RESULT } from '../logic/ApiCommon';
 import { jesgoCaseDefine } from './Schemas';
-import lodash from 'lodash';
+import lodash, { template } from 'lodash';
 import { logging, LOGTYPE } from '../logic/Logger';
 import { readdirSync, rename } from 'fs';
 import * as fs from 'fs';
@@ -1155,8 +1155,9 @@ export const updatePluginExecute = async (updateObjects: updateObjects) => {
       )) as { schema_ids: number[] }[];
       let augmentArrayIndex = 1;
       const tmpSchemaIdFromPlugin = updateObject.schema_ids ?? [];
-      const schemaIds = lodash.uniq(
-        tmpSchemaIdFromPlugin.concat(tmpSchemaId[0].schema_ids)
+      // プラグインの指定しているスキーマにupdateObject.schema_idが含まれている必要がある
+      const schemaIds = lodash.intersection(
+        tmpSchemaIdFromPlugin, tmpSchemaId[0].schema_ids
       );
 
       // すべての検索条件をANDで結合して検索条件にする
