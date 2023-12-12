@@ -150,6 +150,7 @@ CREATE TABLE IF NOT EXISTS jesgo_plugin
     filter_schema_query text COLLATE pg_catalog."default",
     explain text COLLATE pg_catalog."default",
     deleted boolean,
+    disabled boolean DEFAULT false,
     registrant integer,
     last_updated timestamp with time zone,
     CONSTRAINT jesgo_plugin_pkey PRIMARY KEY (plugin_id, plugin_name),
