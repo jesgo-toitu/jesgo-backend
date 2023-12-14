@@ -669,6 +669,9 @@ const getInitValues = async (
           }
 
           if (allowPush) {
+            // 更新時は有効にする
+            info.initValue.disabled = false;
+
             // initの内容に問題がなければ追加
             retValue.push(info.initValue);
           }
@@ -695,6 +698,7 @@ const jesgoPluginColmnNames = [
   'filter_schema_query',
   'explain',
   'registrant',
+  'disabled',
 ];
 
 /**
@@ -1919,8 +1923,8 @@ export const getDocumentsAndNameList = async (caseId: number) => {
 
 /**
  * プラグイン更新(disabledの更新)
- * @param pluginList 
- * @returns 
+ * @param pluginList
+ * @returns
  */
 export const savePluginList = async (
   pluginList: jesgoPluginColumns[]
