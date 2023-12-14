@@ -1616,16 +1616,32 @@ const changeChildsEventDate = async (
     const document = allDocuments.find((p) => p.document_id === documentId);
     if (document) {
       const stringSchema = JSON.stringify(document.document_schema);
+      const schemaHasSetEventdate = stringSchema.includes(`"jesgo:set":"eventdate"`)
+      const schemaHasInheritOverride = stringSchema.includes(`"jesgo:inheriteventdate":"inherit"`) || stringSchema.includes(`"jesgo:inheriteventdate":"clear"`)
+      const documentEventdate = schemaHasSetEventdate ? getPropertyNameFromSet('eventdate', document.document, document.document_schema) : null
+      // eventdate更新の対象は以下
       if (
+        // 自身のドキュメント
         isFirst ||
-        (document.event_date !== paramEventDate &&
-          (!stringSchema.includes(`"jesgo:set":"eventdate"`) ||
-            (stringSchema.includes(`"jesgo:set":"eventdate"`) &&
-              getPropertyNameFromSet(
-                'eventdate',
-                document.document,
-                document.document_schema
-              ) === null)))
+        (
+          // eventdateの値が更新されたドキュメントで以下の条件
+          document.event_date !== paramEventDate &&
+          (
+            // スキーマに jesgo:set : eventdate がない
+            !schemaHasSetEventdate ||
+            // スキーマに jesgo:set : eventdate があるが、ドキュメントで設定が無い
+            (
+              schemaHasSetEventdate &&
+              documentEventdate === null
+            ) ||
+            // スキーマに jesgo:set : eventdate がありドキュメントで設定されているが、jesgo:inheriteventdate がない
+            (
+              schemaHasSetEventdate &&
+              documentEventdate !== null &&
+              !schemaHasInheritOverride
+            )
+          )
+        )
       ) {
         isFirst = false;
         updateDocumentIds.push(document.document_id);
