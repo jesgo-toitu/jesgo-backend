@@ -211,6 +211,7 @@ export interface JSONSchema7 {
   'jesgo:valid'?: string[] | undefined;
   'jesgo:version'?: string | undefined;
   'jesgo:author'?: string | undefined;
+  'jesgo:inheriteventdate'?: string | undefined;
 }
 
 type oldSchema = {
