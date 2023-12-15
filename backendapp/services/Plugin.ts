@@ -377,6 +377,7 @@ export type jesgoPluginColumns = {
   show_upload_dialog: boolean;
   filter_schema_query?: string;
   explain?: string;
+  disabled?: boolean;
 };
 
 /**
@@ -393,7 +394,7 @@ export const getPluginList = async () => {
     const pluginRecords = (await dbAccess.query(
       `select
       plugin_id, plugin_name, plugin_version, script_text,
-      target_schema_id, target_schema_id_string, all_patient, update_db, attach_patient_info, show_upload_dialog, filter_schema_query, explain
+      target_schema_id, target_schema_id_string, all_patient, update_db, attach_patient_info, show_upload_dialog, filter_schema_query, explain, disabled
       from jesgo_plugin
       where deleted = false
       order by plugin_id`
@@ -556,7 +557,7 @@ const getRelationSchemaIds = async (schema_id_string: string) => {
       });
 
       //  万が一生じうるスキーマ検出の重複を除去する
-      schemaIds = Array.from(new Set(schemaIds))
+      schemaIds = Array.from(new Set(schemaIds));
     }
   } finally {
     await dbAccess.end();
@@ -635,7 +636,11 @@ const getInitValues = async (
           info.initValue.target_schema_id = undefined; // 一旦クリア
           // target_schema_id_stringが指定されていた場合、DBからスキーマID(数値)を取得する
           if (info.initValue.target_schema_id_string) {
-            if (!/^[a-zA-Z0-9_/\-\*]+$/.test(info.initValue.target_schema_id_string)) {
+            if (
+              !/^[a-zA-Z0-9_/\-\*]+$/.test(
+                info.initValue.target_schema_id_string
+              )
+            ) {
               // target_schema_id_stringの文字列が不正な場合はエラー
               allowPush = false;
               errorMessages.push(
@@ -643,7 +648,7 @@ const getInitValues = async (
                   dirPath,
                   info.path
                 )}] init()：target_schema_id_stringに、利用できない文字が含まれています。`
-              )
+              );
             } else {
               const targetSchemaIdList = await getRelationSchemaIds(
                 info.initValue.target_schema_id_string
@@ -659,11 +664,14 @@ const getInitValues = async (
                     info.path
                   )}] init()：target_schema_id_stringに、存在しないスキーマIDが設定されています。`
                 );
-              }  
+              }
             }
           }
 
           if (allowPush) {
+            // 更新時は有効にする
+            info.initValue.disabled = false;
+
             // initの内容に問題がなければ追加
             retValue.push(info.initValue);
           }
@@ -690,6 +698,7 @@ const jesgoPluginColmnNames = [
   'filter_schema_query',
   'explain',
   'registrant',
+  'disabled',
 ];
 
 /**
@@ -1157,7 +1166,8 @@ export const updatePluginExecute = async (updateObjects: updateObjects) => {
       const tmpSchemaIdFromPlugin = updateObject.schema_ids ?? [];
       // プラグインの指定しているスキーマにupdateObject.schema_idが含まれている必要がある
       const schemaIds = lodash.intersection(
-        tmpSchemaIdFromPlugin, tmpSchemaId[0].schema_ids
+        tmpSchemaIdFromPlugin,
+        tmpSchemaId[0].schema_ids
       );
 
       // すべての検索条件をANDで結合して検索条件にする
@@ -1512,17 +1522,17 @@ export const getPatientDocuments = async (
   try {
     await dbAccess.connectWithConf();
     const dbRows = (await dbAccess.query(selectQuery, selectArg)) as dbRow[];
- 
+
     if (dbRows && dbRows.length > 0) {
       dbRows.forEach((row) => {
         deleteNullArrayObject(row.document);
         // hashを取得して設定
         if (row.date_of_birth && row.his_id) {
-          row.hash = GetPatientHash(row.date_of_birth, row.his_id)
-          delete row.his_id
-          delete row.date_of_birth
+          row.hash = GetPatientHash(row.date_of_birth, row.his_id);
+          delete row.his_id;
+          delete row.date_of_birth;
         } else {
-          row.hash = ''
+          row.hash = '';
         }
       });
     }
@@ -1922,6 +1932,49 @@ export const getDocumentsAndNameList = async (caseId: number) => {
       'getDocumentsAndNameList'
     );
     return { statusNum: RESULT.ABNORMAL_TERMINATION, body: undefined };
+  } finally {
+    await dbAccess.end();
+  }
+};
+
+/**
+ * プラグイン更新(disabledの更新)
+ * @param pluginList
+ * @returns
+ */
+export const savePluginList = async (
+  pluginList: jesgoPluginColumns[]
+): Promise<ApiReturnObject> => {
+  logging(LOGTYPE.DEBUG, '呼び出し', 'Plugin', 'savePluginList');
+
+  let result = RESULT.NORMAL_TERMINATION;
+
+  const dbAccess = new DbAccess();
+  try {
+    await dbAccess.connectWithConf();
+
+    if (pluginList && pluginList.length > 0) {
+      await dbAccess.query('BEGIN');
+      for (const pluginItem of pluginList) {
+        // disabledのみ更新する
+        await dbAccess.query(
+          `UPDATE jesgo_plugin SET disabled = $1 WHERE plugin_id = $2`,
+          [!!pluginItem.disabled, pluginItem.plugin_id]
+        );
+      }
+      await dbAccess.query('COMMIT');
+      logging(
+        LOGTYPE.INFO,
+        'jesgo_plugin disabled更新完了',
+        'Plugin',
+        'savePluginList'
+      );
+    }
+    return { statusNum: result, body: null };
+  } catch (err: any) {
+    logging(LOGTYPE.ERROR, (err as Error)?.message, 'Plugin', 'savePluginList');
+    result = RESULT.ABNORMAL_TERMINATION;
+    return { statusNum: result, body: null };
   } finally {
     await dbAccess.end();
   }
