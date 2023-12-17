@@ -39,12 +39,12 @@ jsonb_path_exists(document_schema::jsonb, '$.properties.所属リンパ節')
 
 -- /schema/OV/staging v1 ドキュメントの修正
 UPDATE jesgo_document SET
-document = jsonb_strip_nulls(
-  jsonb_set(
-    jsonb_set(document, '{"領域リンパ節"}', document->'所属リンパ節', TRUE),
-    '{"所属リンパ節"}',
-    'null'
-  )
+document = jsonb_set_lax(
+  jsonb_set(document, '{"領域リンパ節"}', document->'所属リンパ節', TRUE),
+  '{"所属リンパ節"}',
+  NULL,
+  FALSE,
+  'delete_key'
 )
 WHERE 
 document ? '所属リンパ節' AND
@@ -63,3 +63,25 @@ WHERE
   schema_id_string = '/schema/OV/staging' AND
   version_major = 1
 );
+
+-- /schema/treatment/chemotherapyのv1 > v2 の修正に伴うドキュメント修正
+UPDATE jesgo_document SET
+document = jsonb_set(
+  document,
+  '{"治療区分"}',
+  REPLACE(
+    REPLACE(
+      TRANSLATE((document->'治療区分')::text, '+', '＋'),
+      '分子標的薬', '分子標的治療'
+    ),
+    '免疫チェックポイント阻害剤＋分子標的治療', '分子標的治療＋免疫チェックポイント阻害剤'
+  )::jsonb,
+  FALSE
+  )
+WHERE
+  document ? '治療区分'
+  AND
+  schema_primary_id IN (
+    SELECT schema_primary_id FROM jesgo_document_schema
+    WHERE schema_id_string = '/schema/treatment/chemotherapy' AND version_major = 1
+  );
