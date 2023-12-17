@@ -19,10 +19,19 @@ UPDATE jesgo_document_schema
     schema_id_string = REPLACE(schema_id_string, '/schema/evaluation/', '/schema/evaluations/')
   WHERE document_schema #>> '{}' LIKE '%/schema/evaluation/%';
 
--- update /schema/OV/staging v1.x 所属リンパ節→領域リンパ節
+-- update /schema/OV/staging v1.x 所属リンパ節→領域リンパ節 cMの修正
 UPDATE jesgo_document_schema 
 SET 
-document_schema = REPLACE(document_schema::text,'"所属リンパ節"', '"領域リンパ節"')::json
+document_schema = 
+REPLACE(
+  REPLACE(
+    REPLACE(document_schema::text,'"所属リンパ節"', '"領域リンパ節"')::text,
+    '"1: 胸水中に悪性細胞を認めるもの(胸水細胞診による)、実質転移ならびに腹腔外臓器(鼠径リンパ節や腹腔外リンパ節を含む)に転移を認めるもの(画像所見による)",',
+    '"1a: 胸水中に悪性細胞を認める","1b: 実質転移ならびに腹腔外臓器(鼠径リンパ節ならびに腹腔外リンパ節を含む)に転移を認めるもの",'
+  )::text,
+  '"X: 遠隔転移を判定するための検索が行われなかったとき"',
+  '"X: 遠隔転移を判定するための検索が行われなかった"'
+)::json
 WHERE
 schema_id_string = '/schema/OV/staging' AND
 version_major = 1 AND
