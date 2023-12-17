@@ -54,3 +54,12 @@ WHERE
   schema_id_string = '/schema/OV/staging' AND
   version_major = 1
 );
+UPDATE jesgo_document SET
+document = jsonb_set(document, '{"cTNM", "M"}', '"X: ‰“Šu“]ˆÚ‚ğ”»’è‚·‚é‚½‚ß‚ÌŒŸõ‚ªs‚í‚ê‚È‚©‚Á‚½"')
+WHERE
+document @@ '$.cTNM.M== "X: ‰“Šu“]ˆÚ‚ğ”»’è‚·‚é‚½‚ß‚ÌŒŸõ‚ªs‚í‚ê‚È‚©‚Á‚½‚Æ‚«"' AND schema_primary_id IN (
+SELECT schema_primary_id FROM jesgo_document_schema
+WHERE
+  schema_id_string = '/schema/OV/staging' AND
+  version_major = 1
+);
