@@ -85,3 +85,23 @@ WHERE
     SELECT schema_primary_id FROM jesgo_document_schema
     WHERE schema_id_string = '/schema/treatment/chemotherapy' AND version_major = 1
   );
+
+
+--卵巣がん-病期診断 画像初見→画像所見
+UPDATE jesgo_document_schema 
+SET 
+document_schema = (REPLACE(document_schema::text,'（画像初見などによる）', '（画像所見などによる）')::text)::json
+WHERE
+schema_id_string = '/schema/OV/staging' AND
+version_major = 1 AND
+document_schema::text LIKE '%（画像初見などによる）%';
+
+UPDATE jesgo_document SET
+document = jsonb_set(document, '{"cTNM", "N"}', '"1: 所属リンパ節に転移を認める（画像所見などによる）"')
+WHERE
+document @@ '$.cTNM.N== "1: 所属リンパ節に転移を認める（画像初見などによる）"' AND schema_primary_id IN (
+SELECT schema_primary_id FROM jesgo_document_schema
+WHERE
+  schema_id_string = '/schema/OV/staging' AND
+  version_major = 1
+);
