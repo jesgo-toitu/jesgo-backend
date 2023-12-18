@@ -35,7 +35,7 @@ REPLACE(
 WHERE
 schema_id_string = '/schema/OV/staging' AND
 version_major = 1 AND
-jsonb_path_exists(document_schema::jsonb, '$.properties.所属リンパ節')
+jsonb_path_exists(document_schema::jsonb, '$.properties.所属リンパ節');
 
 -- /schema/OV/staging v1 ドキュメントの修正
 UPDATE jesgo_document SET
