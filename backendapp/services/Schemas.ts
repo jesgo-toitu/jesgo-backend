@@ -472,6 +472,7 @@ type jesgoDocumentFromDb = {
   inherit_schema: number[];
   schema_major_version: number;
   registrant: number;
+  created: string;
   last_updated: string;
   readonly: boolean;
   deleted: boolean;
@@ -504,6 +505,7 @@ export type jesgoDocumentValueItem = {
   inherit_schema: number[];
   schema_major_version: number;
   registrant: number;
+  created: string;
   last_updated: string;
   readonly: boolean;
   deleted: boolean;
@@ -685,13 +687,14 @@ export const registrationCaseAndDocument = async (
               schema_id, 
               schema_major_version, 
               registrant, 
+              created,
               last_updated, 
               readonly, 
               deleted, 
               root_order, 
               inherit_schema, 
               schema_primary_id 
-              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
               [
                 caseId,
                 str2Date(jesgoDocumentCover.value.event_date),
@@ -700,6 +703,7 @@ export const registrationCaseAndDocument = async (
                 jesgoDocumentCover.value.schema_id,
                 jesgoDocumentCover.value.schema_major_version,
                 jesgoDocumentCover.value.registrant,
+                jesgoDocumentCover.value.created,
                 jesgoDocumentCover.value.last_updated,
                 jesgoDocumentCover.value.readonly,
                 jesgoDocumentCover.value.deleted,
@@ -825,6 +829,7 @@ export const getCaseAndDocument = async (
           inherit_schema: doc.inherit_schema,
           schema_major_version: doc.schema_major_version,
           registrant: doc.registrant,
+          created: doc.created,
           last_updated: doc.last_updated,
           readonly: doc.readonly,
           deleted: doc.deleted,

@@ -12,7 +12,7 @@ import {
 } from '../logic/Utility';
 import { ApiReturnObject, RESULT } from '../logic/ApiCommon';
 import { jesgoCaseDefine } from './Schemas';
-import lodash from 'lodash';
+import lodash, { template } from 'lodash';
 import { logging, LOGTYPE } from '../logic/Logger';
 import { readdirSync, rename } from 'fs';
 import * as fs from 'fs';
@@ -55,6 +55,7 @@ export type jesgoDocumentSelectItem = {
   schema_id: number;
   schema_primary_id: number;
   uniqueness: boolean;
+  schema_id_string: string;
   title: string;
   root_order: number;
 };
@@ -80,6 +81,35 @@ type caseNoRow = {
   caseNo: string;
 };
 
+/**
+ * Array内のnullを削除する
+ * @param srcDoc
+ */
+const deleteNullArrayObject = (srcDoc: Obj) => {
+  Object.entries(srcDoc).forEach((item) => {
+    const propName = item[0];
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    const val = item[1];
+    if (Array.isArray(val)) {
+      // nullや空文字のデータは除外
+      const filterResult = val.filter((p) => p != null && p !== '');
+      if (filterResult.length > 0) {
+        if (filterResult.every((p) => typeof p === 'object')) {
+          filterResult.forEach((item2) => {
+            deleteNullArrayObject(item2 as Obj);
+          });
+        }
+        srcDoc[propName] = filterResult;
+      } else {
+        // nullのデータのみだった場合はプロパティごと削除
+        delete srcDoc[propName];
+      }
+    } else if (typeof val === 'object') {
+      deleteNullArrayObject(val as object);
+    }
+  });
+};
+
 // ドキュメント生成
 const generateDocument = (
   docId: number,
@@ -88,55 +118,48 @@ const generateDocument = (
 ) => {
   const parentDoc = srcDocList.find((p) => p.document_id === docId);
   if (parentDoc) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let pushedObject: any;
+    // 文書がオブジェクトの場合 jesgo:document_id, jesgo:schema_id プロパティにドキュメントidとschema_id_stringを仕込む(取得系のdocDataに追従)
+    const documentBody = parentDoc?.document;
+    if (documentBody) {
+      deleteNullArrayObject(documentBody);
+    }
+    if (Object.prototype.toString.call(documentBody) === '[object Object]') {
+      (documentBody as any)['jesgo:document_id'] = parentDoc.document_id;
+      (documentBody as any)['jesgo:schema_id'] = parentDoc.schema_id_string;
+    }
+
     // ユニークな文書か否かで処理を分ける
     if (parentDoc.uniqueness) {
       // unique=trueの場合、基本的にはドキュメントをそのままセットする
       // 何かの手違いで複数作成されていた場合は配列にする
       // eslint-disable-next-line no-prototype-builtins
       if ((baseObject as object).hasOwnProperty(parentDoc.title)) {
-        pushedObject = parentDoc.document;
+        // 何かの手違いで複数作成されていた場合は配列にする
         if (!Array.isArray(baseObject[parentDoc.title])) {
+          // 要素を配列として再構成
           // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-          const tmp = baseObject[parentDoc.title]; // 既存ドキュメントを一旦退避
-          baseObject[parentDoc.title] = [];
-
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
-          baseObject[parentDoc.title].push(tmp);
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
-          baseObject[parentDoc.title].push(pushedObject);
+          baseObject[parentDoc.title] = [
+            baseObject[parentDoc.title],
+            documentBody,
+          ];
         } else {
+          // 既に配列なのでpushする
           // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
-          baseObject[parentDoc.title].push(pushedObject);
+          baseObject[parentDoc.title].push(documentBody);
         }
       } else {
-        baseObject[parentDoc.title] = parentDoc.document;
+        baseObject[parentDoc.title] = documentBody;
       }
     } else {
       // unique=falseの場合、必ず配列にする
-      if (
-        // eslint-disable-next-line no-prototype-builtins
-        !(baseObject as object).hasOwnProperty(parentDoc.title) ||
-        !Array.isArray(baseObject[parentDoc.title])
-      ) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        let tmp: any;
-        if (baseObject[parentDoc.title]) {
-          // 値があれば一旦退避
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-          tmp = baseObject[parentDoc.title];
-        }
+      // eslint-disable-next-line no-prototype-builtins
+      if (!(baseObject as object).hasOwnProperty(parentDoc.title)) {
+        // 新規作成
         baseObject[parentDoc.title] = [];
-        if (tmp) {
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
-          baseObject[parentDoc.title].push(tmp);
-        }
       }
 
-      pushedObject = parentDoc.document;
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
-      baseObject[parentDoc.title].push(pushedObject);
+      baseObject[parentDoc.title].push(documentBody);
     }
 
     // 子ドキュメント取得
@@ -146,8 +169,8 @@ const generateDocument = (
           childDocId,
           srcDocList,
           // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-          pushedObject
-            ? (pushedObject as Obj)
+          documentBody
+            ? (documentBody as Obj)
             : (baseObject[parentDoc.title] as Obj)
         );
       });
@@ -226,6 +249,7 @@ export const getPackagedDocument = async (reqest: PackageDocumentRequest) => {
     doc.schema_primary_id,
     sc.title,
     sc.uniqueness,
+    sc.schema_id_string,
     doc.root_order
   from jesgo_document doc 
   left join jesgo_document_schema sc on doc.schema_primary_id = sc.schema_primary_id `;
@@ -255,6 +279,7 @@ export const getPackagedDocument = async (reqest: PackageDocumentRequest) => {
     doc.schema_primary_id,
     sc.title,
     sc.uniqueness,
+    sc.schema_id_string,
     doc.root_order 
   from tmp, jesgo_document as doc 
     left join jesgo_document_schema sc on doc.schema_primary_id = sc.schema_primary_id 
@@ -352,6 +377,7 @@ export type jesgoPluginColumns = {
   show_upload_dialog: boolean;
   filter_schema_query?: string;
   explain?: string;
+  disabled?: boolean;
 };
 
 /**
@@ -368,7 +394,7 @@ export const getPluginList = async () => {
     const pluginRecords = (await dbAccess.query(
       `select
       plugin_id, plugin_name, plugin_version, script_text,
-      target_schema_id, target_schema_id_string, all_patient, update_db, attach_patient_info, show_upload_dialog, filter_schema_query, explain
+      target_schema_id, target_schema_id_string, all_patient, update_db, attach_patient_info, show_upload_dialog, filter_schema_query, explain, disabled
       from jesgo_plugin
       where deleted = false
       order by plugin_id`
@@ -513,7 +539,13 @@ const getRelationSchemaIds = async (schema_id_string: string) => {
     await dbAccess.connectWithConf();
 
     const inheritSchemaIds = (await dbAccess.query(
-      `SELECT schema_id, inherit_schema FROM view_latest_schema WHERE schema_id_string = $1 AND schema_id <> 0`,
+      `
+      SELECT schema_id, inherit_schema FROM view_latest_schema 
+      WHERE
+        schema_id_string SIMILAR TO replace($1, '*', '[^/]+')
+        AND
+        schema_id <> 0
+      `,
       [schema_id_string]
     )) as { schema_id: number; inherit_schema: number[] }[];
 
@@ -523,11 +555,13 @@ const getRelationSchemaIds = async (schema_id_string: string) => {
       inheritSchemaIds.forEach((item) => {
         schemaIds?.push(item.schema_id, ...item.inherit_schema);
       });
+
+      //  万が一生じうるスキーマ検出の重複を除去する
+      schemaIds = Array.from(new Set(schemaIds));
     }
   } finally {
     await dbAccess.end();
   }
-
   return schemaIds;
 };
 
@@ -602,24 +636,42 @@ const getInitValues = async (
           info.initValue.target_schema_id = undefined; // 一旦クリア
           // target_schema_id_stringが指定されていた場合、DBからスキーマID(数値)を取得する
           if (info.initValue.target_schema_id_string) {
-            const targetSchemaIdList = await getRelationSchemaIds(
-              info.initValue.target_schema_id_string
-            );
-            if (targetSchemaIdList && targetSchemaIdList.length > 0) {
-              info.initValue.target_schema_id = targetSchemaIdList;
-            } else {
-              // 見つからない場合はエラー
+            if (
+              !/^[a-zA-Z0-9_/\-\*]+$/.test(
+                info.initValue.target_schema_id_string
+              )
+            ) {
+              // target_schema_id_stringの文字列が不正な場合はエラー
               allowPush = false;
               errorMessages.push(
                 `[${cutTempPath(
                   dirPath,
                   info.path
-                )}] init()：target_schema_id_stringに、存在しないスキーマIDが設定されています。`
+                )}] init()：target_schema_id_stringに、利用できない文字が含まれています。`
               );
+            } else {
+              const targetSchemaIdList = await getRelationSchemaIds(
+                info.initValue.target_schema_id_string
+              );
+              if (targetSchemaIdList && targetSchemaIdList.length > 0) {
+                info.initValue.target_schema_id = targetSchemaIdList;
+              } else {
+                // 見つからない場合はエラー
+                allowPush = false;
+                errorMessages.push(
+                  `[${cutTempPath(
+                    dirPath,
+                    info.path
+                  )}] init()：target_schema_id_stringに、存在しないスキーマIDが設定されています。`
+                );
+              }
             }
           }
 
           if (allowPush) {
+            // 更新時は有効にする
+            info.initValue.disabled = false;
+
             // initの内容に問題がなければ追加
             retValue.push(info.initValue);
           }
@@ -646,6 +698,7 @@ const jesgoPluginColmnNames = [
   'filter_schema_query',
   'explain',
   'registrant',
+  'disabled',
 ];
 
 /**
@@ -1111,8 +1164,10 @@ export const updatePluginExecute = async (updateObjects: updateObjects) => {
       )) as { schema_ids: number[] }[];
       let augmentArrayIndex = 1;
       const tmpSchemaIdFromPlugin = updateObject.schema_ids ?? [];
-      const schemaIds = lodash.uniq(
-        tmpSchemaIdFromPlugin.concat(tmpSchemaId[0].schema_ids)
+      // プラグインの指定しているスキーマにupdateObject.schema_idが含まれている必要がある
+      const schemaIds = lodash.intersection(
+        tmpSchemaIdFromPlugin,
+        tmpSchemaId[0].schema_ids
       );
 
       // すべての検索条件をANDで結合して検索条件にする
@@ -1183,6 +1238,11 @@ export const updatePluginExecute = async (updateObjects: updateObjects) => {
         const documentId = documents[index].document_id;
         const document = documents[index].document;
         for (const key in updateObject.target) {
+          // Plugin用予約プロパティであるため /jesgo:document_id があったらスキップする
+          // if (key === '/jesgo:document_id') {
+          //   continue;
+          // }
+
           const record = updateObject.target[key];
           const baseDocument = lodash.cloneDeep(document);
           const getKey = isPointerWithArray(key) ? getPointerTrimmed(key) : key;
@@ -1428,14 +1488,19 @@ export const getPatientDocuments = async (
   type dbRow = {
     document_id: number;
     case_id: number;
+    his_id?: string;
+    date_of_birth?: string;
+    hash?: string;
     schema_id: string;
     document: JSON;
   };
 
-  let selectQuery = `SELECT d.document_id, d.case_id, s.schema_id_string as schema_id, d.document 
+  let selectQuery = `SELECT d.document_id, d.case_id, c.his_id, c.date_of_birth, s.schema_id_string as schema_id, d.document 
   FROM jesgo_document d JOIN jesgo_document_schema s 
   ON d.schema_primary_id = s.schema_primary_id 
-  WHERE deleted = false`;
+  JOIN jesgo_case c
+  ON c.case_id = d.case_id
+  WHERE d.deleted = false`;
   let argIndex = 0;
   const selectArg = [];
 
@@ -1457,6 +1522,21 @@ export const getPatientDocuments = async (
   try {
     await dbAccess.connectWithConf();
     const dbRows = (await dbAccess.query(selectQuery, selectArg)) as dbRow[];
+
+    if (dbRows && dbRows.length > 0) {
+      dbRows.forEach((row) => {
+        deleteNullArrayObject(row.document);
+        // hashを取得して設定
+        if (row.date_of_birth && row.his_id) {
+          row.hash = GetPatientHash(row.date_of_birth, row.his_id);
+          delete row.his_id;
+          delete row.date_of_birth;
+        } else {
+          row.hash = '';
+        }
+      });
+    }
+
     return { statusNum: RESULT.NORMAL_TERMINATION, body: dbRows };
   } catch (e) {
     logging(
@@ -1546,16 +1626,32 @@ const changeChildsEventDate = async (
     const document = allDocuments.find((p) => p.document_id === documentId);
     if (document) {
       const stringSchema = JSON.stringify(document.document_schema);
+      const schemaHasSetEventdate = stringSchema.includes(`"jesgo:set":"eventdate"`)
+      const schemaHasInheritOverride = stringSchema.includes(`"jesgo:inheriteventdate":"inherit"`) || stringSchema.includes(`"jesgo:inheriteventdate":"clear"`)
+      const documentEventdate = schemaHasSetEventdate ? getPropertyNameFromSet('eventdate', document.document, document.document_schema) : null
+      // eventdate更新の対象は以下
       if (
+        // 自身のドキュメント
         isFirst ||
-        (document.event_date !== paramEventDate &&
-          (!stringSchema.includes(`"jesgo:set":"eventdate"`) ||
-            (stringSchema.includes(`"jesgo:set":"eventdate"`) &&
-              getPropertyNameFromSet(
-                'eventdate',
-                document.document,
-                document.document_schema
-              ) === null)))
+        (
+          // eventdateの値が更新されたドキュメントで以下の条件
+          document.event_date !== paramEventDate &&
+          (
+            // スキーマに jesgo:set : eventdate がない
+            !schemaHasSetEventdate ||
+            // スキーマに jesgo:set : eventdate があるが、ドキュメントで設定が無い
+            (
+              schemaHasSetEventdate &&
+              documentEventdate === null
+            ) ||
+            // スキーマに jesgo:set : eventdate がありドキュメントで設定されているが、jesgo:inheriteventdate がない
+            (
+              schemaHasSetEventdate &&
+              documentEventdate !== null &&
+              !schemaHasInheritOverride
+            )
+          )
+        )
       ) {
         isFirst = false;
         updateDocumentIds.push(document.document_id);
@@ -1836,6 +1932,49 @@ export const getDocumentsAndNameList = async (caseId: number) => {
       'getDocumentsAndNameList'
     );
     return { statusNum: RESULT.ABNORMAL_TERMINATION, body: undefined };
+  } finally {
+    await dbAccess.end();
+  }
+};
+
+/**
+ * プラグイン更新(disabledの更新)
+ * @param pluginList
+ * @returns
+ */
+export const savePluginList = async (
+  pluginList: jesgoPluginColumns[]
+): Promise<ApiReturnObject> => {
+  logging(LOGTYPE.DEBUG, '呼び出し', 'Plugin', 'savePluginList');
+
+  let result = RESULT.NORMAL_TERMINATION;
+
+  const dbAccess = new DbAccess();
+  try {
+    await dbAccess.connectWithConf();
+
+    if (pluginList && pluginList.length > 0) {
+      await dbAccess.query('BEGIN');
+      for (const pluginItem of pluginList) {
+        // disabledのみ更新する
+        await dbAccess.query(
+          `UPDATE jesgo_plugin SET disabled = $1 WHERE plugin_id = $2`,
+          [!!pluginItem.disabled, pluginItem.plugin_id]
+        );
+      }
+      await dbAccess.query('COMMIT');
+      logging(
+        LOGTYPE.INFO,
+        'jesgo_plugin disabled更新完了',
+        'Plugin',
+        'savePluginList'
+      );
+    }
+    return { statusNum: result, body: null };
+  } catch (err: any) {
+    logging(LOGTYPE.ERROR, (err as Error)?.message, 'Plugin', 'savePluginList');
+    result = RESULT.ABNORMAL_TERMINATION;
+    return { statusNum: result, body: null };
   } finally {
     await dbAccess.end();
   }

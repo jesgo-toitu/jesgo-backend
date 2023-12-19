@@ -7,10 +7,20 @@ export type settings = {
   hisid_digit: number;
   hisid_hyphen_enable: boolean;
   hisid_alphabet_enable: boolean;
+  jesgo_required_highlight: JesgoRequiredHighlight;
   facility_name: string;
   jsog_registration_number: string;
   joed_registration_number: string;
 };
+
+/**
+ * jesgo:requiredのハイライト設定
+ */
+export type JesgoRequiredHighlight = {
+  jsog: boolean,  // JSOG
+  jsgoe: boolean, // JSGOE
+  others: boolean,  // JSOG・JSGOE以外(独自拡張を想定)
+}
 
 export const getSettings = async (): Promise<ApiReturnObject> => {
   logging(LOGTYPE.DEBUG, '呼び出し', 'Settings', 'getSettings');
@@ -20,6 +30,7 @@ export const getSettings = async (): Promise<ApiReturnObject> => {
     value->'setting'->'hisid'->>'digit' as hisid_digit, 
     value->'setting'->'hisid'->>'hyphen_enable' as hisid_hyphen_enable, 
     value->'setting'->'hisid'->>'alphabet_enable' as hisid_alphabet_enable, 
+    value->'setting'->'display'->>'jesgo_required_highlight' as jesgo_required_highlight, 
     value->'setting'->'facility_information'->>'name' as facility_name, 
     value->'setting'->'facility_information'->>'jsog_registration_number' as jsog_registration_number, 
     value->'setting'->'facility_information'->>'joed_registration_number' as joed_registration_number 
@@ -55,6 +66,9 @@ export const updateSettings = async (
           digit: json.hisid_digit,
           hyphen_enable: json.hisid_hyphen_enable,
           alphabet_enable: json.hisid_alphabet_enable,
+        },
+        display: {
+          jesgo_required_highlight: json.jesgo_required_highlight,
         },
         facility_information: {
           name: json.facility_name,
