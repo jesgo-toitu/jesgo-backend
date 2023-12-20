@@ -43,6 +43,7 @@ UTF-8
 | inherit_schema    | integer[]     |      |            | (未使用)継承先スキーマのIDリスト                        |
 | schema_major_version | integer     |                |            | スキーマのメジャーバージョン                                                     |
 | registrant           | integer     | FK             |            | 最終更新登録者 ID                                                                |
+| created              | timestamptz |                |            | 作成日時タイムスタンプ                                                           |
 | last_updated         | timestamptz | NOT NULL       |            | 最終更新タイムスタンプ                                                           |
 | readonly             | boolean     |                | FALSE      | 編集禁止フラグ                                                                   |
 | deleted              | boolean     |                | FALSE      | 削除済みフラグ                                                                   |
@@ -52,30 +53,30 @@ UTF-8
 
 ### テーブル定義
 
-| 列名               | 型        | 属性     | デフォルト   | 解説                                                                                                                                                                                      |
-| ------------------ | --------- | -------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| schema_primary_id          | serial   | PK       |              | レコード毎に振られるID、スキーマが更新された際にスキーマIDが同様でも新しい値となる         |
-| schema_id          | integer   |       |              | スキーマ ID 、schema_id_stringと対で設定され、バージョンが変わってもスキーマIDは変更されない        |
-| schema_id_string   | text      |          |              | JSON スキーマの$id                                                                                                                                                                        |
-| title              | text      |          |              | スキーマが定義するドキュメントのタイトル(JSON スキーマの title から生成)                                                                                                                  |
-| subtitle           | text      |          |              | スキーマが定義するドキュメントのサブタイトル(JSON スキーマの title から生成)                                                                                                              |
-| document_schema    | JSON      | NOT NULL |              | スキーマ定義内容(JSON)                                                                                                                                                                    |
-| uniqueness         | boolean   |          | FALSE        | 同一階層にこのスキーマで定義されるドキュメントは最大 1 つしか存在できない(JSON スキーマの jesgo:unique)                                                                                   |
-| hidden             | boolean   |          |              | 候補として表示しない                                                                                                                                                                      |
-| subschema          | integer[] |          |              | このスキーマの下位として標準的に展開されるスキーマのスキーマ ID(初期値は JSON スキーマの jesgo:subschema から検索、順序は保持される)、スキーマ管理画面より並び替えが可能          |
-| subschema_default  | integer[] |          |              | このスキーマの下位として標準的に展開されるスキーマのスキーマ IDの初期値(初期値は JSON スキーマの jesgo:subschema から検索、順序は保持される)、スキーマのアップロード以外では更新されない          |
-| child_schema       | integer[] |          |              | このスキーマの下位として展開されうるスキーマのスキーマ ID(初期値は JSON スキーマのjesgo:childschema,jesgo:parentschema から検索して生成、順序は保持される)、スキーマ管理画面より表示非表示の切替え、並び替えが可能 |
-| child_schema_default       | integer[] |          |              | このスキーマの下位として展開されうるスキーマのスキーマ IDの初期値(初期値は JSON スキーマのjesgo:childschema,jesgo:parentschema から検索して生成、順序は保持される)、スキーマのアップロード以外では更新されない |
-| base_version_major | integer   |          |              | 継承スキーマの場合、基底スキーマのメジャーバージョンを明示する                                                                                                                            |
-| valid_from         | date      |        | '1970-01-01' | スキーマの有効期間開始日(JSON スキーマの jesgo:vaild[0])                                                                                                                      |
-| valid_until        | date      |          |              | スキーマの有効期間終了日(JSON スキーマの jesgo:valid[1])                                                                                                                      |
-| author             | text      | NOT NULL |              | スキーマの作成者名(JSON スキーマの jesgo:author)                                                                                                                                          |
-| version_major      | integer   | NOT NULL |              | スキーマのメジャーバージョン(JSON スキーマの jesgo:version の上位数値)                                                                                                                    |
-| version_minor      | integer   | NOT NULL |              | スキーマのマイナーバージョン(JSON スキーマの jesgo:version の下位数値)                                                                                                                    |
-| plugin_id          | integer   |        |              | このスキーマを導入したプラグインの ID                                                                                                                                                     |
-| inherit_schema       | integer[] |          |              | このスキーマの継承先として展開されうるスキーマのスキーマ ID(初期値は JSON スキーマの$id から検索して生成、順序は保持される)、スキーマ管理画面より表示非表示の切替えが可能 |
-| inherit_schema_default       | integer[] |          |              | このスキーマの継承先として展開されうるスキーマのスキーマ IDの初期値(初期値は JSON スキーマの$id から検索して生成、順序は保持される)、スキーマのアップロード以外では更新されない |
-| base_schema       | integer |          | NULL         | このスキーマが継承スキーマである場合、基底スキーマのスキーマIDを明示する |
+| 列名                   | 型        | 属性     | デフォルト   | 解説                                                                                                                                                                                                               |
+| ---------------------- | --------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| schema_primary_id      | serial    | PK       |              | レコード毎に振られるID、スキーマが更新された際にスキーマIDが同様でも新しい値となる                                                                                                                                 |
+| schema_id              | integer   |          |              | スキーマ ID 、schema_id_stringと対で設定され、バージョンが変わってもスキーマIDは変更されない                                                                                                                       |
+| schema_id_string       | text      |          |              | JSON スキーマの$id                                                                                                                                                                                                 |
+| title                  | text      |          |              | スキーマが定義するドキュメントのタイトル(JSON スキーマの title から生成)                                                                                                                                           |
+| subtitle               | text      |          |              | スキーマが定義するドキュメントのサブタイトル(JSON スキーマの title から生成)                                                                                                                                       |
+| document_schema        | JSON      | NOT NULL |              | スキーマ定義内容(JSON)                                                                                                                                                                                             |
+| uniqueness             | boolean   |          | FALSE        | 同一階層にこのスキーマで定義されるドキュメントは最大 1 つしか存在できない(JSON スキーマの jesgo:unique)                                                                                                            |
+| hidden                 | boolean   |          |              | 候補として表示しない                                                                                                                                                                                               |
+| subschema              | integer[] |          |              | このスキーマの下位として標準的に展開されるスキーマのスキーマ ID(初期値は JSON スキーマの jesgo:subschema から検索、順序は保持される)、スキーマ管理画面より並び替えが可能                                           |
+| subschema_default      | integer[] |          |              | このスキーマの下位として標準的に展開されるスキーマのスキーマ IDの初期値(初期値は JSON スキーマの jesgo:subschema から検索、順序は保持される)、スキーマのアップロード以外では更新されない                           |
+| child_schema           | integer[] |          |              | このスキーマの下位として展開されうるスキーマのスキーマ ID(初期値は JSON スキーマのjesgo:childschema,jesgo:parentschema から検索して生成、順序は保持される)、スキーマ管理画面より表示非表示の切替え、並び替えが可能 |
+| child_schema_default   | integer[] |          |              | このスキーマの下位として展開されうるスキーマのスキーマ IDの初期値(初期値は JSON スキーマのjesgo:childschema,jesgo:parentschema から検索して生成、順序は保持される)、スキーマのアップロード以外では更新されない     |
+| base_version_major     | integer   |          |              | 継承スキーマの場合、基底スキーマのメジャーバージョンを明示する                                                                                                                                                     |
+| valid_from             | date      |          | '1970-01-01' | スキーマの有効期間開始日(JSON スキーマの jesgo:vaild[0])                                                                                                                                                           |
+| valid_until            | date      |          |              | スキーマの有効期間終了日(JSON スキーマの jesgo:valid[1])                                                                                                                                                           |
+| author                 | text      | NOT NULL |              | スキーマの作成者名(JSON スキーマの jesgo:author)                                                                                                                                                                   |
+| version_major          | integer   | NOT NULL |              | スキーマのメジャーバージョン(JSON スキーマの jesgo:version の上位数値)                                                                                                                                             |
+| version_minor          | integer   | NOT NULL |              | スキーマのマイナーバージョン(JSON スキーマの jesgo:version の下位数値)                                                                                                                                             |
+| plugin_id              | integer   |          |              | このスキーマを導入したプラグインの ID                                                                                                                                                                              |
+| inherit_schema         | integer[] |          |              | このスキーマの継承先として展開されうるスキーマのスキーマ ID(初期値は JSON スキーマの$id から検索して生成、順序は保持される)、スキーマ管理画面より表示非表示の切替えが可能                                          |
+| inherit_schema_default | integer[] |          |              | このスキーマの継承先として展開されうるスキーマのスキーマ IDの初期値(初期値は JSON スキーマの$id から検索して生成、順序は保持される)、スキーマのアップロード以外では更新されない                                    |
+| base_schema            | integer   |          | NULL         | このスキーマが継承スキーマである場合、基底スキーマのスキーマIDを明示する                                                                                                                                           |
 
 ## (未使用)ドキュメントアイコン (jesgo_document_icon)
 
@@ -163,3 +164,70 @@ UTF-8
 ### 補足
 
 ユーザ操作を伴わない(外部からのスクリプト等)ログは user_id が 0 で記録される。
+
+
+## プラグイン (jesgo_plugin)
+
+### テーブル定義
+
+| 列名                    | 型          | 属性             | デフォルト | 解説                                                         |
+| ----------------------- | ----------- | ---------------- | ---------- | ------------------------------------------------------------ |
+| plugin_id               | serial      | PK               |            | 内部で使用するプラグインID                                   |
+| plugin_name             | text        | PK, UNIQUE       |            | プラグイン名                                                 |
+| plugin_version          | text        |                  |            | バージョン番号                                               |
+| script_text             | text        |                  |            | 実行するJavaScriptコード                                     |
+| target_schema_id        | integer[]   |                  |            | 対象のスキーマID(jesgo_document_schemaテーブルのschema_id)   |
+| target_schema_id_string | text        |                  |            | 対象のスキーマID(パス)                                       |
+| all_patient             | boolean     |                  | FALSE      | 全患者対象のプラグインか否か                                 |
+| update_db               | boolean     |                  | FALSE      | DBへの更新を行うプラグインか否か                             |
+| attach_patient_info     | boolean     |                  | FALSE      | 出力するドキュメントに患者氏名などの個人情報を載せるか否か   |
+| show_upload_dialog      | boolean     |                  | TRUE       | ファイルアップロードが必要か否か                             |
+| filter_schema_query     | text        |                  |            | 出力対象のスキーマをフィルターするクエリ(jsonpath)           |
+| explain                 | text        |                  |            | プラグインの説明文                                           |
+| deleted                 | boolean     |                  |            | 削除済みフラグ                                               |
+| registrant              | integer     | FK               |            | 最終更新登録者 ID                                            |
+| last_updated            | timestamptz |                  |            | 最終更新タイムスタンプ                                       |
+
+### 補足
+プラグイン名(plugin_name)で一意となるため、バージョンが異なる同一名称のプラグインは登録不可
+
+## 検索項目マスタ (jesgo_search_column)
+
+### テーブル定義
+
+| 列名        | 型      | 属性     | デフォルト | 解説            |
+| ----------- | ------- | -------- | ---------- | --------------- |
+| column_id   | integer | PK       |            | 項目ID          |
+| column_type | text    | PK       |            | 項目タイプ      |
+| column_name | text    |          |            | 項目名称        |
+
+### マスタ設定
+
+| column_id | column_type | column_name |
+| --------- | ----------- | ----------- |
+| 1         | cancer_type | 子宮頸がん  |
+| 2         | cancer_type | 子宮体がん  |
+| 3         | cancer_type | 卵巣がん    |
+| 4         | cancer_type | 外陰癌      |
+| 5         | cancer_type | 腟癌        |
+| 6         | cancer_type | 子宮肉腫    |
+| 7         | cancer_type | 子宮腺肉腫  |
+| 8         | cancer_type | 絨毛性疾患  |
+
+### 補足
+スキーマアップロード時、スキーマ情報から動的にマスタを生成する  
+現在は患者検索の「がん種」のリスト値に使用のみ。
+column_typeを追加することで別のリスト値管理にも対応可能
+
+
+## システム設定 (jesgo_system_setting)
+
+### テーブル定義
+
+| 列名       | 型      | 属性     | デフォルト | 解説                       |
+| ---------- | ------- | -------- | ---------- | -------------------------- |
+| setting_id | integer | PK       |            | 設定 ID                    |
+| value      | jsonb   |          |            | システム設定を保持したJSON |
+
+### 補足
+システム全体の設定を保持。項目はJSONで持つため、現状1レコードしか使用していない
