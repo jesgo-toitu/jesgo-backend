@@ -21,7 +21,7 @@ UTF-8
 | date_of_birth | date        | NOT NULL         |            | 患者の生年月日                          |
 | date_of_death | date        |                  |            | 患者の死亡日、死亡していない場合は NULL |
 | sex           | varchar(1)  | FK               | 'F'        | 患者の性別                              |
-| HIS_id        | text        | UNIQUE, NOT NULL |            | 施設での患者 ID                         |
+| his_id        | text        | UNIQUE, NOT NULL |            | 施設での患者 ID                         |
 | decline       | boolean     |                  | FALSE      | 臨床試験登録拒否を表明しているか否か    |
 | registrant    | integer     | FK               |            | 最終更新登録者 ID                       |
 | last_updated  | timestamptz | NOT NULL         |            | 最終更新タイムスタンプ                  |
@@ -117,6 +117,7 @@ UTF-8
 | display_name  | text    |             |            | アプリケーション使用時に表示されるユーザ名 |
 | password_hash | text    |             |            | パスワードをハッシュ化したもの             |
 | roll_id       | integer | FK,NOT NULL |            | ユーザの権限設定内容への外部参照           |
+| deleted       | boolean | FALSE       |            |                                 |
 
 ### 補足
 
@@ -138,17 +139,21 @@ UTF-8
 | remove        | boolean |          |            | ドキュメントの削除が可能 |
 | data_manage   | boolean |          |            | データの統括管理可能     |
 | system_manage | boolean |          |            | システム管理可能         |
+| plugin_registerable | boolean |          | FALSE      | プラグインの登録・削除が可能。プラグイン管理画面が開ける         |
+| plugin_executable_select | boolean |          | FALSE      | 	データ抽出プラグイン実行可能         |
+| plugin_executable_update | boolean |          | FALSE      | データ更新プラグイン実行可能         |
+| deleted | boolean |          | FALSE      |          |
 
 ### マスタ設定
 
-| roll_id | title                | login | view  | add   | edit  | remove | data_manage | system_manage |
-| ------- | -------------------- | ----- | ----- | ----- | ----- | ------ | ----------- | ------------- |
-| 0       | システム管理者       | TRUE  | TRUE  | TRUE  | TRUE  | TRUE   | TRUE        | TRUE          |
-| 1       | システムオペレーター | TRUE  | FALSE | FALSE | FALSE | FALSE  | FALSE       | TRUE          |
-| 100     | 上級ユーザ           | TRUE  | TRUE  | TRUE  | TRUE  | TRUE   | TRUE        | FALSE         |
-| 101     | 一般ユーザ           | TRUE  | TRUE  | TRUE  | TRUE  | FALSE  | FALSE       | FALSE         |
-| 999     | ログ用ユーザ         | FALSE | FALSE | FALSE | FALSE | FALSE  | FALSE       | FALSE         |
-| 1000    | 退職者               | FALSE | FALSE | FALSE | FALSE | FALSE  | FALSE       | FALSE         |
+| roll_id | title                | login | view  | add   | edit  | remove | data_manage | system_manage | plugin_registerable | plugin_executable_select | plugin_executable_update | deleted |
+| ------- | -------------------- | ----- | ----- | ----- | ----- | ------ | ----------- | ------------- | ------ | ------ | ------ | ------ |
+| 0       | システム管理者       | TRUE  | TRUE  | TRUE  | TRUE  | TRUE   | TRUE        | TRUE          | TRUE | TRUE | TRUE | FALSE |
+| 1       | システムオペレーター | TRUE  | FALSE | FALSE | FALSE | FALSE  | FALSE       | TRUE          | FALSE | TRUE | TRUE | FALSE |
+| 100     | 上級ユーザ           | TRUE  | TRUE  | TRUE  | TRUE  | TRUE   | TRUE        | FALSE         | FALSE | TRUE | TRUE | FALSE |
+| 101     | 一般ユーザ           | TRUE  | TRUE  | TRUE  | TRUE  | FALSE  | FALSE       | FALSE         | FALSE | TRUE | FALSE | FALSE |
+| 999     | ログ用ユーザ         | FALSE | FALSE | FALSE | FALSE | FALSE  | FALSE       | FALSE         | FALSE | FALSE | FALSE | FALSE |
+| 1000    | 退職者               | FALSE | FALSE | FALSE | FALSE | FALSE  | FALSE       | FALSE         | FALSE | FALSE | FALSE | FALSE |
 
 ## (未使用)ログ (jesgo_log)
 
@@ -185,6 +190,7 @@ UTF-8
 | filter_schema_query     | text        |                  |            | 出力対象のスキーマをフィルターするクエリ(jsonpath)           |
 | explain                 | text        |                  |            | プラグインの説明文                                           |
 | deleted                 | boolean     |                  |            | 削除済みフラグ                                               |
+| disabled                 | boolean     |                  | FALSE      | 有効/無効フラグ                                               |
 | registrant              | integer     | FK               |            | 最終更新登録者 ID                                            |
 | last_updated            | timestamptz |                  |            | 最終更新タイムスタンプ                                       |
 
