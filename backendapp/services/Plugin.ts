@@ -20,7 +20,7 @@ import {
   SaveDataObjDefine,
   treeSchema,
 } from './Schemas';
-import lodash, { update } from 'lodash';
+import lodash from 'lodash';
 import { logging, LOGTYPE } from '../logic/Logger';
 import { readdirSync, rename } from 'fs';
 import * as fs from 'fs';
@@ -63,6 +63,7 @@ export type jesgoDocumentSelectItem = {
   schema_id: number;
   schema_primary_id: number;
   uniqueness: boolean;
+  schema_id_string: string;
   title: string;
   root_order: number;
 };
@@ -125,13 +126,14 @@ const generateDocument = (
 ) => {
   const parentDoc = srcDocList.find((p) => p.document_id === docId);
   if (parentDoc) {
-    // 文書がオブジェクトの場合 jesgo:document_id プロパティにドキュメントid仕込む
+    // 文書がオブジェクトの場合 jesgo:document_id, jesgo:schema_id プロパティにドキュメントidとschema_id_stringを仕込む(取得系のdocDataに追従)
     const documentBody = parentDoc?.document;
     if (documentBody) {
       deleteNullArrayObject(documentBody);
     }
     if (Object.prototype.toString.call(documentBody) === '[object Object]') {
       (documentBody as any)['jesgo:document_id'] = parentDoc.document_id;
+      (documentBody as any)['jesgo:schema_id'] = parentDoc.schema_id_string;
     }
 
     // ユニークな文書か否かで処理を分ける
@@ -255,6 +257,7 @@ export const getPackagedDocument = async (reqest: PackageDocumentRequest) => {
     doc.schema_primary_id,
     sc.title,
     sc.uniqueness,
+    sc.schema_id_string,
     doc.root_order
   from jesgo_document doc 
   left join jesgo_document_schema sc on doc.schema_primary_id = sc.schema_primary_id `;
@@ -284,6 +287,7 @@ export const getPackagedDocument = async (reqest: PackageDocumentRequest) => {
     doc.schema_primary_id,
     sc.title,
     sc.uniqueness,
+    sc.schema_id_string,
     doc.root_order 
   from tmp, jesgo_document as doc 
     left join jesgo_document_schema sc on doc.schema_primary_id = sc.schema_primary_id 
@@ -381,6 +385,7 @@ export type jesgoPluginColumns = {
   show_upload_dialog: boolean;
   filter_schema_query?: string;
   explain?: string;
+  disabled?: boolean;
 };
 
 /**
@@ -397,7 +402,7 @@ export const getPluginList = async () => {
     const pluginRecords = (await dbAccess.query(
       `select
       plugin_id, plugin_name, plugin_version, script_text,
-      target_schema_id, target_schema_id_string, all_patient, update_db, attach_patient_info, show_upload_dialog, filter_schema_query, explain
+      target_schema_id, target_schema_id_string, all_patient, update_db, attach_patient_info, show_upload_dialog, filter_schema_query, explain, disabled
       from jesgo_plugin
       where deleted = false
       order by plugin_id`
@@ -672,6 +677,9 @@ const getInitValues = async (
           }
 
           if (allowPush) {
+            // 更新時は有効にする
+            info.initValue.disabled = false;
+
             // initの内容に問題がなければ追加
             retValue.push(info.initValue);
           }
@@ -698,6 +706,7 @@ const jesgoPluginColmnNames = [
   'filter_schema_query',
   'explain',
   'registrant',
+  'disabled',
 ];
 
 /**
@@ -1166,8 +1175,10 @@ export const updatePluginExecute = async (updateObjects: updateObjects) => {
       )) as { schema_ids: number[] }[];
       let augmentArrayIndex = 1;
       const tmpSchemaIdFromPlugin = updateObject.schema_ids ?? [];
-      const schemaIds = lodash.uniq(
-        tmpSchemaIdFromPlugin.concat(tmpSchemaId[0].schema_ids)
+      // プラグインの指定しているスキーマにupdateObject.schema_idが含まれている必要がある
+      const schemaIds = lodash.intersection(
+        tmpSchemaIdFromPlugin,
+        tmpSchemaId[0].schema_ids
       );
 
       // すべての検索条件をANDで結合して検索条件にする
@@ -1964,16 +1975,33 @@ const changeChildsEventDate = async (
     const document = allDocuments.find((p) => p.document_id === documentId);
     if (document) {
       const stringSchema = JSON.stringify(document.document_schema);
+      const schemaHasSetEventdate = stringSchema.includes(
+        `"jesgo:set":"eventdate"`
+      );
+      const schemaHasInheritOverride =
+        stringSchema.includes(`"jesgo:inheriteventdate":"inherit"`) ||
+        stringSchema.includes(`"jesgo:inheriteventdate":"clear"`);
+      const documentEventdate = schemaHasSetEventdate
+        ? getPropertyNameFromSet(
+            'eventdate',
+            document.document,
+            document.document_schema
+          )
+        : null;
+      // eventdate更新の対象は以下
       if (
+        // 自身のドキュメント
         isFirst ||
+        // eventdateの値が更新されたドキュメントで以下の条件
         (document.event_date !== paramEventDate &&
-          (!stringSchema.includes(`"jesgo:set":"eventdate"`) ||
-            (stringSchema.includes(`"jesgo:set":"eventdate"`) &&
-              getPropertyNameFromSet(
-                'eventdate',
-                document.document,
-                document.document_schema
-              ) === null)))
+          // スキーマに jesgo:set : eventdate がない
+          (!schemaHasSetEventdate ||
+            // スキーマに jesgo:set : eventdate があるが、ドキュメントで設定が無い
+            (schemaHasSetEventdate && documentEventdate === null) ||
+            // スキーマに jesgo:set : eventdate がありドキュメントで設定されているが、jesgo:inheriteventdate がない
+            (schemaHasSetEventdate &&
+              documentEventdate !== null &&
+              !schemaHasInheritOverride)))
       ) {
         isFirst = false;
         updateDocumentIds.push(document.document_id);
@@ -2254,6 +2282,49 @@ export const getDocumentsAndNameList = async (caseId: number) => {
       'getDocumentsAndNameList'
     );
     return { statusNum: RESULT.ABNORMAL_TERMINATION, body: undefined };
+  } finally {
+    await dbAccess.end();
+  }
+};
+
+/**
+ * プラグイン更新(disabledの更新)
+ * @param pluginList
+ * @returns
+ */
+export const savePluginList = async (
+  pluginList: jesgoPluginColumns[]
+): Promise<ApiReturnObject> => {
+  logging(LOGTYPE.DEBUG, '呼び出し', 'Plugin', 'savePluginList');
+
+  let result = RESULT.NORMAL_TERMINATION;
+
+  const dbAccess = new DbAccess();
+  try {
+    await dbAccess.connectWithConf();
+
+    if (pluginList && pluginList.length > 0) {
+      await dbAccess.query('BEGIN');
+      for (const pluginItem of pluginList) {
+        // disabledのみ更新する
+        await dbAccess.query(
+          `UPDATE jesgo_plugin SET disabled = $1 WHERE plugin_id = $2`,
+          [!!pluginItem.disabled, pluginItem.plugin_id]
+        );
+      }
+      await dbAccess.query('COMMIT');
+      logging(
+        LOGTYPE.INFO,
+        'jesgo_plugin disabled更新完了',
+        'Plugin',
+        'savePluginList'
+      );
+    }
+    return { statusNum: result, body: null };
+  } catch (err: any) {
+    logging(LOGTYPE.ERROR, (err as Error)?.message, 'Plugin', 'savePluginList');
+    result = RESULT.ABNORMAL_TERMINATION;
+    return { statusNum: result, body: null };
   } finally {
     await dbAccess.end();
   }

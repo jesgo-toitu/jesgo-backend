@@ -55,7 +55,9 @@ import {
   getPatientDocuments,
   getPluginList,
   importPluginExecute,
+  jesgoPluginColumns,
   PackageDocumentRequest,
+  savePluginList,
   updatePluginExecute,
   uploadPluginZipFile,
 } from '../services/Plugin';
@@ -1046,6 +1048,31 @@ router.get('/repair-childschema/', async (req, res, next) => {
   repairChildSchema()
     .then((result) => res.status(200).send(result))
     .catch(next);
+});
+
+router.post('/save-plugin', async (req, res, next) => {
+  logging(
+    LOGTYPE.DEBUG,
+    '呼び出し',
+    'router',
+    '/save-plugin',
+    getUsernameFromRequest(req)
+  );
+
+  // 権限の確認
+  const authResult: ApiReturnObject = await checkAuth(
+    getToken(req),
+    roll.pluginRegisterable
+  );
+  if (authResult.statusNum !== RESULT.NORMAL_TERMINATION) {
+    res.status(200).send(authResult);
+  } else {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    const data: jesgoPluginColumns[] = req.body.data as jesgoPluginColumns[];
+    savePluginList(data)
+      .then((result) => res.status(200).send(result))
+      .catch(next);
+  }
 });
 
 /**
