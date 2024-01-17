@@ -54,6 +54,7 @@ import {
   getPatientDocumentRequest,
   getPatientDocuments,
   getPluginList,
+  importPluginExecute,
   jesgoPluginColumns,
   PackageDocumentRequest,
   savePluginList,
@@ -975,6 +976,18 @@ router.post('/executeUpdate', async (req, res, next) => {
   );
 });
 
+router.post('/register-case', async (req, res, next) => {
+  await routing(
+    '/register-case',
+    importPluginExecute,
+    req,
+    res,
+    next,
+    roll.pluginUpdate,
+    { updateObjects: req.body.data, executeUserId: getUserIdFromRequest(req) }
+  );
+});
+
 router.get('/getCaseIdAndDocIdList', async (req, res, next) => {
   await routing(
     '/getCaseIdAndDocIdList',
@@ -1031,10 +1044,10 @@ router.get('/repair-childschema/', async (req, res, next) => {
     '/repair-childschema',
     getUsernameFromRequest(req)
   );
-  
+
   repairChildSchema()
-      .then((result) => res.status(200).send(result))
-      .catch(next);
+    .then((result) => res.status(200).send(result))
+    .catch(next);
 });
 
 router.post('/save-plugin', async (req, res, next) => {
