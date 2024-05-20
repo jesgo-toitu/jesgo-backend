@@ -386,6 +386,7 @@ export type jesgoPluginColumns = {
   filter_schema_query?: string;
   explain?: string;
   disabled?: boolean;
+  plugin_group_id?: number;
 };
 
 /**
@@ -402,10 +403,17 @@ export const getPluginList = async () => {
     const pluginRecords = (await dbAccess.query(
       `select
       plugin_id, plugin_name, plugin_version, script_text,
-      target_schema_id, target_schema_id_string, all_patient, update_db, attach_patient_info, show_upload_dialog, filter_schema_query, explain, disabled
+      target_schema_id, target_schema_id_string, all_patient, update_db, attach_patient_info, show_upload_dialog, filter_schema_query, explain, disabled, plugin_group_id
       from jesgo_plugin
       where deleted = false
-      order by plugin_id`
+      union
+      select
+      null plugin_id, pluginGroup.plugin_group_name, null, null,
+      null, null, plugin.all_patient, null, null, null, null, null, plugin.disabled, pluginGroup.plugin_group_id
+      from jesgo_plugin plugin, jesgo_plugin_group pluginGroup
+      where plugin.deleted = false and pluginGroup.deleted = false and plugin.plugin_group_id = pluginGroup.plugin_group_id
+      group by pluginGroup.plugin_group_id, plugin.all_patient, plugin.disabled
+      order by plugin_id, plugin_group_id`
     )) as jesgoPluginColumns[];
 
     return { statusNum: RESULT.NORMAL_TERMINATION, body: pluginRecords };
@@ -707,6 +715,7 @@ const jesgoPluginColmnNames = [
   'explain',
   'registrant',
   'disabled',
+  'plugin_group_id'
 ];
 
 /**
