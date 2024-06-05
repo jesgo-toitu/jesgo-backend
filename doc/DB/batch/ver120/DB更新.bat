@@ -54,3 +54,18 @@ IF %errorlevel% neq 0 (
 ) ELSE (
   echo データ更新成功
 )
+
+rem データ更新2
+if exist C:\jesgo\pgsql\bin\psql.exe (
+	C:\jesgo\pgsql\bin\psql.exe -f .\update_jesgo_plugin.sql -U postgres -d jesgo_db
+) else (
+	C:\jesgo\postgres\pgsql\bin\psql.exe -f .\update_jesgo_plugin.sql -U postgres -d jesgo_db
+)
+IF %errorlevel% neq 0 (
+
+  ECHO %date% %time:~0,8% 実行に失敗しました  ErrorCode=%errorlevel%^
+  FileName「%SQLFILE%」 >> %~DP0\log/psql_log.txt
+
+) ELSE (
+  echo データ更新2成功
+)
