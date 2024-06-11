@@ -11,8 +11,16 @@ import {
   streamPromise,
 } from '../logic/Utility';
 import { ApiReturnObject, RESULT } from '../logic/ApiCommon';
-import { jesgoCaseDefine } from './Schemas';
-import lodash, { template } from 'lodash';
+import {
+  getCaseAndDocument,
+  getSchemaTree,
+  jesgoCaseDefine,
+  jesgoDocumentObjDefine,
+  registrationCaseAndDocument,
+  SaveDataObjDefine,
+  treeSchema,
+} from './Schemas';
+import lodash from 'lodash';
 import { logging, LOGTYPE } from '../logic/Logger';
 import { readdirSync, rename } from 'fs';
 import * as fs from 'fs';
@@ -37,11 +45,11 @@ export interface PackageDocumentRequest {
 
 // 1患者情報の定義
 export interface PatientItemDefine {
-  hash: string;
+  hash?: string;
   his_id?: string;
   date_of_birth?: string;
   name?: string;
-  decline: boolean;
+  decline?: boolean;
   documentList?: object[];
 }
 
@@ -378,6 +386,7 @@ export type jesgoPluginColumns = {
   filter_schema_query?: string;
   explain?: string;
   disabled?: boolean;
+  plugin_group_id?: number;
 };
 
 /**
@@ -394,10 +403,17 @@ export const getPluginList = async () => {
     const pluginRecords = (await dbAccess.query(
       `select
       plugin_id, plugin_name, plugin_version, script_text,
-      target_schema_id, target_schema_id_string, all_patient, update_db, attach_patient_info, show_upload_dialog, filter_schema_query, explain, disabled
+      target_schema_id, target_schema_id_string, all_patient, update_db, attach_patient_info, show_upload_dialog, filter_schema_query, explain, disabled, plugin_group_id
       from jesgo_plugin
       where deleted = false
-      order by plugin_id`
+      union
+      select
+      null plugin_id, pluginGroup.plugin_group_name, null, null,
+      null, null, plugin.all_patient, null, null, null, null, null, plugin.disabled, pluginGroup.plugin_group_id
+      from jesgo_plugin plugin, jesgo_plugin_group pluginGroup
+      where plugin.deleted = false and pluginGroup.deleted = false and plugin.plugin_group_id = pluginGroup.plugin_group_id
+      group by pluginGroup.plugin_group_id, plugin.all_patient, plugin.disabled
+      order by plugin_id, plugin_group_id`
     )) as jesgoPluginColumns[];
 
     return { statusNum: RESULT.NORMAL_TERMINATION, body: pluginRecords };
@@ -671,7 +687,10 @@ const getInitValues = async (
           if (allowPush) {
             // 更新時は有効にする
             info.initValue.disabled = false;
-
+            if (info.initValue.plugin_group_id != null) {
+              // 一括登録系のみ更新時は無効にする
+              info.initValue.disabled = true;
+            }
             // initの内容に問題がなければ追加
             retValue.push(info.initValue);
           }
@@ -699,6 +718,7 @@ const jesgoPluginColmnNames = [
   'explain',
   'registrant',
   'disabled',
+  'plugin_group_id'
 ];
 
 /**
@@ -937,12 +957,15 @@ type updateObjects = {
 type updateObject = {
   isConfirmed?: boolean;
   document_id?: number;
+  tmp_document_id?: string;
   case_id?: number;
   hash?: string;
   case_no?: string;
   schema_id?: string;
   schema_ids: number[];
   target: Record<string, string | number>;
+  patient_info?: PatientItemDefine;
+  child_documents?: updateObject[];
 };
 
 type updateDocuments = {
@@ -1336,10 +1359,11 @@ export const executeUpdate = async (arg: {
     await dbAccess.connectWithConf();
     await dbAccess.query('BEGIN');
 
-    for (let index = 0; index < arg.updateObjects.length; index++) {
-      const documentId = arg.updateObjects[index].document_id;
-      const pointer = arg.updateObjects[index].pointer;
-      const record = arg.updateObjects[index].record;
+    // ドキュメントIDの一覧作成
+    const documentIdList = new Set(arg.updateObjects.map((p) => p.document_id));
+
+    // ドキュメント毎に処理する
+    for (const documentId of documentIdList) {
       const dbRows = (await dbAccess.query(
         `SELECT d.case_id, d.document, s.document_schema 
         FROM jesgo_document d JOIN jesgo_document_schema s 
@@ -1351,12 +1375,20 @@ export const executeUpdate = async (arg: {
       const oldDocument = lodash.cloneDeep(document);
       const caseId = dbRows[0].case_id;
       const documentSchema = dbRows[0].document_schema;
-      // 配列の末尾に追加する場合、要素を1つずつ追加する
-      if (Array.isArray(record) && pointer.endsWith('/-')) {
-        record.forEach((item) => jsonpointer.set(document, pointer, item));
-      } else {
-        jsonpointer.set(document, pointer, record);
-      }
+
+      arg.updateObjects
+        .filter((p) => p.document_id === documentId)
+        .forEach((checkItem) => {
+          const pointer = checkItem.pointer;
+          const record = checkItem.record;
+
+          // 配列の末尾に追加する場合、要素を1つずつ追加する
+          if (Array.isArray(record) && pointer.endsWith('/-')) {
+            record.forEach((item) => jsonpointer.set(document, pointer, item));
+          } else {
+            jsonpointer.set(document, pointer, record);
+          }
+        });
 
       // eventDate変更に関わらずまずドキュメントを更新する
       const updateQuery =
@@ -1472,6 +1504,335 @@ export const executeUpdate = async (arg: {
     };
   } finally {
     await dbAccess.end();
+  }
+};
+
+/**
+ * 患者情報の登録
+ * @param patInfo
+ */
+const registerPatientInfo = async (
+  patInfo: PatientItemDefine | undefined,
+  executeUserId: number
+) => {
+  if (
+    patInfo == null ||
+    !patInfo.his_id?.toString() ||
+    !patInfo.name?.toString() ||
+    !patInfo.date_of_birth?.toString()
+  ) {
+    return undefined;
+  }
+
+  let case_id: number | undefined = undefined;
+
+  const dbAccess = new DbAccess();
+  try {
+    await dbAccess.connectWithConf();
+    const result = (await dbAccess.query(
+      `SELECT case_id FROM jesgo_case WHERE his_id = $1`,
+      [patInfo.his_id],
+      'select'
+    )) as { case_id?: number }[];
+    if (result.length === 0) {
+      // INSERT
+      case_id = Number(
+        await dbAccess.query(
+          `INSERT INTO jesgo_case (name, date_of_birth, his_id, sex, decline, registrant, last_updated, deleted)
+      VALUES ($1, $2, $3, 'F', false, $4, NOW(), false)`,
+          [patInfo.name, patInfo.date_of_birth, patInfo.his_id, executeUserId],
+          'insert'
+        )
+      );
+    } else {
+      // UPDATE
+      case_id = result[0].case_id;
+      await dbAccess.query(
+        `UPDATE jesgo_case SET name = $1, date_of_birth = $2, last_updated = NOW(), registrant = $3, deleted = false WHERE case_id = $4`,
+        [patInfo.name, patInfo.date_of_birth, executeUserId, case_id],
+        'update'
+      );
+    }
+  } catch (err) {
+    await dbAccess.rollback();
+    console.error(err);
+    logging(
+      LOGTYPE.ERROR,
+      `【エラー】${(err as Error).message}`,
+      'Plugin',
+      'registerPatientInfo'
+    );
+    case_id = undefined;
+  } finally {
+    await dbAccess.end();
+  }
+  return case_id;
+};
+
+/**
+ * 患者・ドキュメント情報インポート実行
+ * @param arg {updateObjects: 1患者分の更新データ, executeUserId: 利用者ID}
+ * @returns
+ */
+export const importPluginExecute = async (arg: {
+  updateObjects: updateObjects;
+  executeUserId: number;
+}) => {
+  logging(LOGTYPE.DEBUG, '呼び出し', 'Plugin', 'importPluginExecute');
+
+  const { updateObjects: importObjects, executeUserId } = arg;
+
+  if (!importObjects) {
+    return { statusNum: RESULT.ABNORMAL_TERMINATION, body: undefined };
+  }
+
+  let case_id: number | undefined = undefined;
+  const updateDate = new Date().toLocaleString('ja-JP');
+
+  let tmpCaseId = 1;
+
+  const { objects } = importObjects;
+
+  // ツリー構造のスキーマ一覧を取得しておく
+  let rootSchemaTree: treeSchema[] = [];
+  const schemaTreeRes = await getSchemaTree();
+  if (schemaTreeRes.body) {
+    rootSchemaTree = (
+      schemaTreeRes.body as {
+        treeSchema: treeSchema[];
+        errorMessages: string[];
+      }
+    ).treeSchema;
+  }
+
+  try {
+    let lastPatInfo: PatientItemDefine | undefined = undefined;
+    let loadedSaveData: SaveDataObjDefine | undefined = undefined;
+
+    // 新規ドキュメント保存処理
+    for (const patItem of objects) {
+      // 初めに患者情報(jesgo_case)を登録する
+      case_id = await registerPatientInfo(patItem.patient_info, executeUserId);
+
+      if (case_id) {
+        lastPatInfo = patItem.patient_info;
+        // 既存のドキュメント取得
+        loadedSaveData = (await getCaseAndDocument(case_id))
+          .body as SaveDataObjDefine;
+        loadedSaveData.jesgo_case.is_new_case = false;
+
+        const dbAccess = new DbAccess();
+        // ドキュメントの登録
+        try {
+          await dbAccess.connectWithConf();
+
+          const func = async (
+            targetSchema: treeSchema,
+            targetUpdateObject: updateObject | undefined,
+            isRoot: boolean,
+            parentDoc?: jesgoDocumentObjDefine
+          ) => {
+            if (!targetUpdateObject) {
+              targetUpdateObject = {
+                schema_ids: [],
+                target: {},
+              };
+            }
+
+            // 既存のドキュメントを取得
+            let document = loadedSaveData!.jesgo_document.find((p) => {
+              if (isRoot) {
+                // ルートの場合はroot_orderも見る
+                return (
+                  p.value.schema_id === targetSchema.schema_id &&
+                  p.root_order > -1
+                );
+              } else if (parentDoc) {
+                // サブスキーマの場合は親ドキュメントに紐づけ済みのものを取得
+                const convertChildDocToSchemaId =
+                  parentDoc.value.child_documents.map(
+                    (childId) =>
+                      loadedSaveData!.jesgo_document.find(
+                        (a) => a.key.toString() === childId.toString()
+                      )?.value.schema_id
+                  );
+                return (
+                  p.value.schema_id === targetSchema.schema_id &&
+                  convertChildDocToSchemaId.includes(p.value.schema_id)
+                );
+              }
+              // ここには来ない想定
+              return false;
+            });
+
+            if (!document) {
+              // ドキュメントが見つからない場合は新規作成
+              document = {
+                key: `K${tmpCaseId}`,
+                root_order: -1,
+                value: {
+                  case_id: case_id?.toString() ?? '',
+                  event_date: '',
+                  child_documents: [],
+                  document: {},
+                  schema_id: -1,
+                  schema_primary_id: -1,
+                  schema_major_version: 1,
+                  inherit_schema: [],
+                  registrant: executeUserId,
+                  readonly: false,
+                  deleted: false,
+                  last_updated: updateDate,
+                  created: updateDate,
+                },
+                event_date_prop_name: '',
+                death_data_prop_name: '',
+                delete_document_keys: [],
+              };
+              tmpCaseId += 1;
+              // 紐づけ用に仮番を保持
+              targetUpdateObject.tmp_document_id = document.key;
+
+              // TODO: typeによってデフォルト値変えた方がよい？
+              // switch (targetSchema.schemaType) {
+              //   case 'string': {
+              //     document.value.document = '';
+              //     break;
+              //   }
+              //   case 'array': {
+              //     document.value.document = [];
+              //     break;
+              //   }
+              // }
+            } else {
+              targetUpdateObject.document_id = Number(document.key);
+            }
+
+            if (
+              document.key.startsWith('K') &&
+              targetSchema.schema_id &&
+              targetSchema.schema_id !== 0
+            ) {
+              // 新規ドキュメント作成
+              if (isRoot) {
+                // 空のルートドキュメントの作成
+
+                // 作成済みのルートドキュメントを取得
+                const rootDocList = (await dbAccess.query(
+                  `SELECT document_id, case_id, root_order
+              FROM jesgo_document WHERE case_id = $1 AND root_order > -1 AND deleted = false`,
+                  [case_id]
+                )) as {
+                  document_id: number;
+                  case_id: number;
+                  root_order: number;
+                }[];
+
+                // ルートの並び順設定
+                document.root_order =
+                  rootDocList.length === 0
+                    ? 1
+                    : Math.max(
+                        ...rootDocList.map((p) => Number(p.root_order))
+                      ) + 1;
+              }
+
+              const docVal = document.value;
+              docVal.schema_id = targetSchema.schema_id;
+              docVal.schema_primary_id = targetSchema.schema_primary_id;
+
+              loadedSaveData!.jesgo_document.push(document);
+
+              // 子ドキュメントの場合は親のドキュメントに紐づける
+              if (!isRoot && parentDoc) {
+                parentDoc.value.child_documents.push(document.key);
+              }
+            }
+
+            // サブスキーマの作成
+            if (targetSchema.subschema.length > 0) {
+              for (const targetSubschema of targetSchema.subschema) {
+                const updateSubschemaObj =
+                  targetUpdateObject?.child_documents?.find(
+                    (p) => p.schema_id === targetSubschema.schema_id_string
+                  );
+                await func(
+                  targetSubschema,
+                  updateSubschemaObj,
+                  false,
+                  document
+                );
+              }
+            }
+          };
+
+          const rootSchemaInfo = rootSchemaTree.find(
+            (p) => p.schema_id_string === patItem.schema_id
+          );
+          // トップレベルのスキーマがルートスキーマだった場合に作成する
+          if (rootSchemaInfo) {
+            await func(rootSchemaInfo, patItem, true);
+          }
+
+          // INSERT処理は既存の保存処理に任せる
+          const insertResult = await registrationCaseAndDocument(
+            lodash.cloneDeep(loadedSaveData)
+          );
+
+          if (insertResult.statusNum === RESULT.NORMAL_TERMINATION) {
+            // 新旧ドキュメントID付け替え
+            if (insertResult.extension) {
+              const funcUpdateDocRelation = (updateItem: updateObject) => {
+                if (updateItem.tmp_document_id) {
+                  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+                  const newDocId = (insertResult.extension as Obj)[
+                    updateItem.tmp_document_id
+                  ];
+                  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+                  updateItem.document_id = Number(newDocId);
+                }
+
+                if (
+                  updateItem.child_documents &&
+                  updateItem.child_documents.length > 0
+                ) {
+                  updateItem.child_documents.forEach((item) =>
+                    funcUpdateDocRelation(item)
+                  );
+                }
+              };
+              funcUpdateDocRelation(patItem);
+            }
+          }
+        } catch (e) {
+          throw e as Error;
+        } finally {
+          await dbAccess.end();
+        }
+      }
+    }
+
+    return {
+      statusNum: RESULT.NORMAL_TERMINATION,
+      body: {
+        his_id: lastPatInfo?.his_id,
+        patient_name: lastPatInfo?.name,
+        case_id,
+        returnUpdateObjects: objects,
+      },
+    };
+  } catch (e) {
+    console.error(e);
+    logging(
+      LOGTYPE.ERROR,
+      `【エラー】${(e as Error).message}`,
+      'Plugin',
+      'importPluginExecute'
+    );
+    return {
+      statusNum: RESULT.ABNORMAL_TERMINATION,
+      body: (e as Error).message,
+    };
   }
 };
 
@@ -1626,32 +1987,33 @@ const changeChildsEventDate = async (
     const document = allDocuments.find((p) => p.document_id === documentId);
     if (document) {
       const stringSchema = JSON.stringify(document.document_schema);
-      const schemaHasSetEventdate = stringSchema.includes(`"jesgo:set":"eventdate"`)
-      const schemaHasInheritOverride = stringSchema.includes(`"jesgo:inheriteventdate":"inherit"`) || stringSchema.includes(`"jesgo:inheriteventdate":"clear"`)
-      const documentEventdate = schemaHasSetEventdate ? getPropertyNameFromSet('eventdate', document.document, document.document_schema) : null
+      const schemaHasSetEventdate = stringSchema.includes(
+        `"jesgo:set":"eventdate"`
+      );
+      const schemaHasInheritOverride =
+        stringSchema.includes(`"jesgo:inheriteventdate":"inherit"`) ||
+        stringSchema.includes(`"jesgo:inheriteventdate":"clear"`);
+      const documentEventdate = schemaHasSetEventdate
+        ? getPropertyNameFromSet(
+            'eventdate',
+            document.document,
+            document.document_schema
+          )
+        : null;
       // eventdate更新の対象は以下
       if (
         // 自身のドキュメント
         isFirst ||
-        (
-          // eventdateの値が更新されたドキュメントで以下の条件
-          document.event_date !== paramEventDate &&
-          (
-            // スキーマに jesgo:set : eventdate がない
-            !schemaHasSetEventdate ||
+        // eventdateの値が更新されたドキュメントで以下の条件
+        (document.event_date !== paramEventDate &&
+          // スキーマに jesgo:set : eventdate がない
+          (!schemaHasSetEventdate ||
             // スキーマに jesgo:set : eventdate があるが、ドキュメントで設定が無い
-            (
-              schemaHasSetEventdate &&
-              documentEventdate === null
-            ) ||
+            (schemaHasSetEventdate && documentEventdate === null) ||
             // スキーマに jesgo:set : eventdate がありドキュメントで設定されているが、jesgo:inheriteventdate がない
-            (
-              schemaHasSetEventdate &&
+            (schemaHasSetEventdate &&
               documentEventdate !== null &&
-              !schemaHasInheritOverride
-            )
-          )
-        )
+              !schemaHasInheritOverride)))
       ) {
         isFirst = false;
         updateDocumentIds.push(document.document_id);

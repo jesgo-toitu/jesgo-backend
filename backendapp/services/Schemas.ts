@@ -2,7 +2,7 @@ import lodash from 'lodash';
 import { logging, LOGTYPE } from '../logic/Logger';
 import { ApiReturnObject, RESULT } from '../logic/ApiCommon';
 import { DbAccess } from '../logic/DbAccess';
-import { formatDateStr, JSONSchema7 } from './JsonToDatabase';
+import { formatDateStr, JSONSchema7, JSONSchema7TypeName } from './JsonToDatabase';
 
 export interface getJsonSchemaBody {
   ids: number[] | undefined;
@@ -38,10 +38,11 @@ export type JesgoDocumentSchema = {
 
 export type schemaRecord = {
   schema_id: number;
+  schema_primary_id: number;
   schema_id_string: string;
   title: string;
   subtitle: string;
-  document_schema: string;
+  document_schema: JSONSchema7;
   uniqueness: boolean;
   hidden: boolean;
   subschema: number[];
@@ -62,10 +63,13 @@ export type schemaRecord = {
 
 export type treeSchema = {
   schema_id: number;
+  schema_primary_id: number;
+  schema_id_string: string;
   schema_title: string;
   subschema: treeSchema[];
   childschema: treeSchema[];
   inheritschema: treeSchema[];
+  schemaType: JSONSchema7TypeName | undefined;
 };
 
 export const getJsonSchema = async (
@@ -343,12 +347,15 @@ export const schemaRecord2SchemaTree = (
 
   return {
     schema_id: schemaRecord.schema_id,
+    schema_primary_id: schemaRecord.schema_primary_id,
+    schema_id_string: schemaRecord.schema_id_string,
     schema_title:
       schemaRecord.title +
       (schemaRecord.subtitle.length > 0 ? ' ' + schemaRecord.subtitle : ''),
     subschema: subSchemaListWithTree,
     childschema: childSchemaListWithTree,
     inheritschema: inheritSchemaListWithTree,
+    schemaType: schemaRecord.document_schema.type as JSONSchema7TypeName
   };
 };
 
@@ -650,7 +657,7 @@ export const registrationCaseAndDocument = async (
             childIndex < childDocumentsList.length;
             childIndex++
           ) {
-            const childDocumentId = childDocumentsList[childIndex];
+            const childDocumentId = childDocumentsList[childIndex].toString();
 
             // 仮IDかどうかのチェック
             if (childDocumentId.startsWith('K')) {
@@ -763,7 +770,7 @@ export const registrationCaseAndDocument = async (
       }
     }
     await dbAccess.query('COMMIT');
-    return { statusNum: RESULT.NORMAL_TERMINATION, body: caseId };
+    return { statusNum: RESULT.NORMAL_TERMINATION, body: caseId, extension: dummyNumber };
   } catch (e) {
     logging(
       LOGTYPE.ERROR,

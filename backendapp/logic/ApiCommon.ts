@@ -6,6 +6,7 @@ export interface ApiReturnObject {
   body: unknown;
   userId?: number;
   error?: string;
+  extension?: unknown;
 }
 
 export const RESULT = {
