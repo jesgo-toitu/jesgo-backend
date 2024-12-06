@@ -3,7 +3,7 @@ import { readFileSync, readdirSync, rename } from 'fs';
 import { ApiReturnObject, RESULT } from '../logic/ApiCommon';
 import lodash from 'lodash';
 import { logging, LOGTYPE } from '../logic/Logger';
-import { Extract } from 'unzipper';
+import { Open } from 'unzipper';
 import UUID from 'uuidjs';
 import * as fs from 'fs';
 import fse from 'fs-extra';
@@ -1293,8 +1293,8 @@ export const uploadZipFile = async (data: any): Promise<ApiReturnObject> => {
   try {
     switch (fileType) {
       case '.zip':
-        await streamPromise(
-          fs.createReadStream(filePath).pipe(Extract({ path: dirPath }))
+        await Open.file(filePath).then((dir) =>
+          dir.extract({path: dirPath})
         );
         break;
       case '.json':

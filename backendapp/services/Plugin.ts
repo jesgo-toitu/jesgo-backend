@@ -27,7 +27,7 @@ import * as fs from 'fs';
 import fse from 'fs-extra';
 import * as path from 'path';
 import UUID from 'uuidjs';
-import { Extract } from 'unzipper';
+import { Open } from 'unzipper';
 import pathModule from 'path';
 import * as jsonpointer from 'jsonpointer';
 import { getItemsAndNames, JSONSchema7 } from './JsonToDatabase';
@@ -803,8 +803,8 @@ export const uploadPluginZipFile = async (
   try {
     switch (fileType) {
       case '.zip':
-        await streamPromise(
-          fs.createReadStream(filePath).pipe(Extract({ path: dirPath }))
+        await Open.file(filePath).then((dir) =>
+          dir.extract({path: dirPath})
         );
         break;
       case '.js':
