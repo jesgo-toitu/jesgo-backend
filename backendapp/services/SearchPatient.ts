@@ -50,6 +50,7 @@ interface userData {
   progress: string[];
   postRelapseTreatment: string[];
   registration: string[];
+  registrationNumber: string[];
   threeYearPrognosis: string[];
   fiveYearPrognosis: string[];
   status: string[];
@@ -338,6 +339,7 @@ export const searchPatients = async (
         progress: [],
         postRelapseTreatment: [],
         registration: [],
+        registrationNumber: [],
         threeYearPrognosis: [],
         fiveYearPrognosis: [],
         status: [],
@@ -592,6 +594,7 @@ export const searchPatients = async (
             ) ?? '';
           if (registrationNumber !== null && registrationNumber !== '') {
             userData.registration.push('completed');
+            userData.registrationNumber.push(registrationNumber);
           } else {
             userData.registration.push('not_completed');
           }
