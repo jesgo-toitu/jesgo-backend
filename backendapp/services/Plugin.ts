@@ -685,8 +685,8 @@ const getInitValues = async (
           }
 
           if (allowPush) {
-            // 更新時は有効にする
-            info.initValue.disabled = false;
+            // 更新時は有効にする(無効が設定されている場合のみ無効)
+            info.initValue.disabled = info.initValue.disabled ?? false; 
             if (info.initValue.plugin_group_id != null) {
               // 一括登録系のみ更新時は無効にする
               info.initValue.disabled = true;
