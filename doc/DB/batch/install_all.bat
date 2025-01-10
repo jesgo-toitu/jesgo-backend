@@ -25,3 +25,7 @@ cd ..\
 cd .\ver120
 call DB更新.bat
 cd ..\
+
+cd .\ver130
+call DB更新.bat
+cd ..\
