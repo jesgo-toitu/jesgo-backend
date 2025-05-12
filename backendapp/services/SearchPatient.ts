@@ -570,7 +570,7 @@ export const searchPatients = async (
 
     // エラー有無(ここのみスキーマではなくドキュメントを見る)
     if (document.includes('jesgo:error')) {
-      // ドキュメントにjesgo:errorの文字列があった場合はエラーの状態を確認する
+      // ドキュメントにjesgo:errorの文字列があった場合はエラーの状態を確認する為に展開する
       try {
         const parsedDocument = JSON.parse(document);
         const errorProperty = parsedDocument['jesgo:error'];
