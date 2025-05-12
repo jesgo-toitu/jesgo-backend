@@ -4,6 +4,7 @@ import { ApiReturnObject, RESULT } from '../logic/ApiCommon';
 import { logging, LOGTYPE } from '../logic/Logger';
 import { Const, isAgoYearFromNow, jesgo_tagging } from '../logic/Utility';
 import { getItemsAndNames, JSONSchema7 } from './JsonToDatabase';
+import { error } from 'console';
 
 //インターフェース
 export interface dbRow {
@@ -569,8 +570,20 @@ export const searchPatients = async (
 
     // エラー有無(ここのみスキーマではなくドキュメントを見る)
     if (document.includes('jesgo:error')) {
-      userData.registration.push('has_error');
-    }
+      // ドキュメントにjesgo:errorの文字列があった場合はエラーの状態を確認する
+      try {
+        const parsedDocument = JSON.parse(document);
+        const errorProperty = parsedDocument['jesgo:error'];
+
+        if (Array.isArray(errorProperty) && errorProperty.length > 0) {
+          // エラー項目がある場合はhas_errorを追加
+          userData.registration.push('has_error');
+        } else if (errorProperty !== null && (typeof errorProperty === 'string' && errorProperty.trim() !== '')) {
+          // エラーがある場合はhas_errorを追加
+          userData.registration.push('has_error');
+        }
+      } catch {}
+    } 
 
     // 腫瘍登録番号登録有無
     if (docSchema.includes(jesgo_tagging(Const.JESGO_TAG.REGISTRABILITY))) {
