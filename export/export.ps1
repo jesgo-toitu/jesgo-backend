@@ -5,8 +5,8 @@ Remove-item .\release -Recurse -Force
 
 # ディレクトリを再生成
 New-Item release -ItemType Directory
-# バックエンドファイルの主要ファイルから.ts(トランスパイル前ファイル)、.key(秘密鍵ファイル)以外をコピーする
-Copy-Item -Exclude ("*.ts", "*.key") -Path ..\backendapp\ -Destination .\release\ -Recurse
+# バックエンドファイルの主要ファイルから.ts(トランスパイル前ファイル)、.key(秘密鍵ファイル)、設定ファイル以外をコピーする
+Copy-Item -Exclude ("*.ts", "*.key", "config.json") -Path ..\backendapp\ -Destination .\release\ -Recurse
 
 # その他単体ファイルをコピーする
 Copy-Item -Path ..\package.json -Destination .\release\

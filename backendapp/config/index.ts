@@ -8,14 +8,23 @@ export type EnvVariables = {
   port: number;
   passwordSalt: string;
   hashSalt: string;
+  serverPort: number;
   privateKey: string;
   publicKey: string;
 };
 
 import * as fs from 'fs';
 
+const _pathJson = fs
+  .readFileSync('./package.json')
+  .toString();
+const pathJson = JSON.parse(_pathJson);
+const configPath = process.env.NODE_ENV === 'production' ?
+  pathJson['config']['configPath']['production'] :
+  pathJson['config']['configPath']['development'];
+
 const _configJson: string = fs
-  .readFileSync('./backendapp/config/config.json')
+  .readFileSync(configPath as string || './backendapp/config/config.json')
   .toString();
 const _privateKey: string = fs
   .readFileSync('./backendapp/config/keys/private.key')
@@ -27,13 +36,14 @@ const configJson = JSON.parse(_configJson);
 
 const envVariables = (): EnvVariables => {
   return {
-    database: configJson['database'],
-    user: configJson['user'],
-    password: configJson['password'],
-    host: configJson['host'],
-    port: configJson['port'],
-    passwordSalt: configJson['passwordSalt'],
-    hashSalt: configJson['hashSalt'],
+    database: configJson['server']['database'],
+    user: configJson['server']['user'],
+    password: configJson['server']['password'],
+    host: configJson['server']['host'],
+    port: configJson['server']['port'],
+    passwordSalt: configJson['server']['passwordSalt'],
+    hashSalt: configJson['server']['hashSalt'],
+    serverPort: configJson['server']['serverPort'],
     privateKey: _privateKey,
     publicKey: _publicKey,
   };
