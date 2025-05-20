@@ -32,14 +32,14 @@
         }
     },
     "scripts": {
-        "start": "cmd /c \"if defined PATH_NODE (\"%PATH_NODE%\" ./backendapp/app.js) else (node ./backendapp/app.js)\"",
+        "start": "cmd /c \"if defined PATH_NODE (\"\"%PATH_NODE%\"\" ./backendapp/app.js) else (node ./backendapp/app.js)\"",
         "dev-start": "node ./backendapp/app.js",
         "prod-start": "cross-env NODE_ENV=production node ./backendapp/app.js",
         "build": "npx tsc",
         "lint": "eslint --ext .tsx,.ts backendapp/",
         "fmt": "prettier --write backendapp/**/*",
         "test": "jest",
-        "install-service": "winser -i --env \"NODE_ENV=%NODE_ENV%\" --env \"PATH_NODE=%PATH_NODE%\"",
+        "install-service": "winser -i",
         "uninstall-service": "winser -r -x",
         "postinstall": "patch-package"
     },
