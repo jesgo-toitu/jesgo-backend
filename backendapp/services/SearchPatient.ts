@@ -568,21 +568,14 @@ export const searchPatients = async (
       userData.status.push('recurrence');
     }
 
-    // エラー有無(ここのみスキーマではなくドキュメントを見る)
-    if (document.includes('jesgo:error')) {
-      // ドキュメントにjesgo:errorの文字列があった場合はエラーの状態を確認する為に展開する
-      try {
-        const parsedDocument = JSON.parse(document);
-        const errorProperty = parsedDocument['jesgo:error'];
+    // エラー有無フラグの設定
+    if (typeof (dbRow.document as any) === 'object' && (dbRow.document as any)['jesgo:error']) {
+      const errorProperty = (dbRow.document as any)['jesgo:error']
 
-        if (Array.isArray(errorProperty) && errorProperty.length > 0) {
-          // エラー項目がある場合はhas_errorを追加
-          userData.registration.push('has_error');
-        } else if (errorProperty !== null && (typeof errorProperty === 'string' && errorProperty.trim() !== '')) {
-          // エラーがある場合はhas_errorを追加
-          userData.registration.push('has_error');
-        }
-      } catch {}
+      if (Array.isArray(errorProperty) && errorProperty.filter(item => item != null).length > 0) {
+        // エラー項目がある場合はhas_errorを追加
+        userData.registration.push('has_error');
+      }
     } 
 
     // 腫瘍登録番号登録有無
