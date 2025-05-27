@@ -1,9 +1,12 @@
 {
-    "database": "jesgo_db",
-    "user": "postgres",
-    "password": "12345678",
-    "host": "localhost",
-    "port": 5432,
-    "passwordSalt": "abcde",
-    "hashSalt": "3^0g#H-x$M"
+    "server": {
+        "database": "jesgo_db",
+        "user": "postgres",
+        "password": "12345678",
+        "host": "localhost",
+        "port": 5432,
+        "passwordSalt": "abcde",
+        "hashSalt": "3^0g#H-x$M",
+        "serverPort": 3000
+    }
 }
