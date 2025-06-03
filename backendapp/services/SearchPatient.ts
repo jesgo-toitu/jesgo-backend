@@ -568,10 +568,9 @@ export const searchPatients = async (
       userData.status.push('recurrence');
     }
 
-    // エラー有無フラグの設定
-    if (typeof (dbRow.document as any) === 'object' && (dbRow.document as any)['jesgo:error']) {
-      const errorProperty = (dbRow.document as any)['jesgo:error']
-
+    // エラー有無(ここのみスキーマではなくドキュメントを見る)
+    if (document.includes('jesgo:error')) {
+      const errorProperty = (dbRow.document as any)['jesgo:error'];
       if (Array.isArray(errorProperty) && errorProperty.filter(item => item != null).length > 0) {
         // エラー項目がある場合はhas_errorを追加
         userData.registration.push('has_error');
